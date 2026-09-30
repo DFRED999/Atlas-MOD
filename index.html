@@ -1,0 +1,1959 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ATLAS MOD · הגשת חשבונות</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --ink:#1c2b2a; --paper:#eef2f0; --paper-2:#ffffff; --line:#d6ddd9; --head:#f7f9f8;
+    --good:#1f6f5c; --good-bg:#e4f0ec; --bad:#9a3324; --bad-bg:#f6e6e2;
+    --warn:#b3541e; --warn-bg:#fbeee2; --accent:#3d6b5c; --muted:#5f6f6a; --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:"Segoe UI","Arial Hebrew",Arial,sans-serif;background:var(--paper);color:var(--ink);font-size:13.5px;line-height:1.5;}
+  header.top{background:var(--paper-2);border-bottom:2px solid var(--ink);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+  header.top h1{font-size:19px;margin:0;font-weight:700;}
+  header.top .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .chip{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--paper-2);white-space:nowrap;}
+  .chip.good{border-color:var(--good);color:var(--good);background:var(--good-bg);}
+  .chip.bad{border-color:var(--bad);color:var(--bad);background:var(--bad-bg);}
+  .chip.warn{border-color:var(--warn);color:var(--warn);background:var(--warn-bg);}
+  button.chip{cursor:pointer;}
+  nav.tabs{display:flex;gap:6px;padding:12px 24px 0;flex-wrap:wrap;}
+  nav.tabs button{border:1px solid var(--line);background:var(--paper-2);padding:6px 16px;border-radius:999px;font-size:13px;cursor:pointer;}
+  nav.tabs button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  main{padding:16px 24px 60px;max-width:1500px;margin:0 auto;}
+  button{font-family:inherit;font-size:13px;border:1px solid var(--ink);background:var(--paper-2);color:var(--ink);border-radius:var(--radius);padding:6px 13px;cursor:pointer;}
+  button.primary{background:var(--ink);color:#fff;}
+  button.small{padding:3px 9px;font-size:12px;}
+  button.ghost{border-color:var(--line);}
+  button.danger{border-color:var(--bad);color:var(--bad);}
+  button:disabled{opacity:.45;cursor:default;}
+  button:hover:not(:disabled){opacity:.85;}
+  input,select,textarea{font-family:inherit;font-size:13px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--ink);}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+  input.num,.ltr{direction:ltr;text-align:right;}
+  .card{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;}
+  .card h2{font-size:14px;margin:0 0 10px;}
+  .card h3{font-size:12.5px;margin:12px 0 6px;color:var(--muted);font-weight:600;}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .row.spread{justify-content:space-between;}
+  .grow{flex:1;}
+  .muted{color:var(--muted);} .small{font-size:12px;}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0;}
+  .stat{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--radius);padding:10px 13px;}
+  .stat .label{font-size:11.5px;color:var(--muted);}
+  .stat .value{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .stat.good .value{color:var(--good);} .stat.warn .value{color:var(--warn);}
+  .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper-2);}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:right;font-size:11px;color:var(--muted);font-weight:600;padding:9px 8px;border-bottom:1px solid var(--line);background:var(--head);white-space:nowrap;position:sticky;top:0;}
+  td{padding:7px 8px;border-bottom:1px solid var(--paper);vertical-align:middle;}
+  td.n{font-variant-numeric:tabular-nums;direction:ltr;text-align:right;white-space:nowrap;}
+  tr.dup td{background:#fbf6e9;}
+  tr.total td{font-weight:700;border-top:2px solid var(--ink);background:var(--head);}
+  tr.clickable{cursor:pointer;} tr.clickable:hover td{background:#f3f6f5;}
+  .steps{list-style:none;margin:8px 0;padding:0;}
+  .steps li{padding:5px 0;display:flex;gap:8px;align-items:flex-start;border-bottom:1px dashed var(--paper);}
+  .steps li .ic{width:18px;text-align:center;font-weight:700;flex:none;}
+  .steps li.ok .ic{color:var(--good);} .steps li.bad .ic{color:var(--bad);} .steps li.warn .ic{color:var(--warn);}
+  .alert{border-radius:var(--radius);padding:9px 13px;margin:8px 0;border:1px solid;}
+  .alert.warn{background:var(--warn-bg);border-color:#e6c3a5;color:#6d3412;}
+  .alert.bad{background:var(--bad-bg);border-color:#e3b9b0;color:var(--bad);}
+  .alert.good{background:var(--good-bg);border-color:#b8d6cc;color:var(--good);}
+  .alert.info{background:#eef1f7;border-color:#cfd7e6;color:#2d3b57;}
+  .monthNav{display:inline-flex;align-items:center;border:1px solid var(--ink);border-radius:999px;overflow:hidden;background:#fff;}
+  .monthNav button{border:none;border-radius:0;padding:5px 12px;}
+  .monthNav span{padding:5px 14px;font-weight:700;font-variant-numeric:tabular-nums;min-width:92px;text-align:center;border-inline:1px solid var(--line);}
+  .drop{border:2px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:var(--muted);cursor:pointer;background:#fafcfb;margin-top:8px;}
+  .drop.over{border-color:var(--accent);background:var(--good-bg);}
+  .pill{display:inline-block;font-size:11px;border-radius:999px;padding:1px 8px;border:1px solid var(--line);white-space:nowrap;}
+  .pill.ok{color:var(--good);border-color:var(--good);background:var(--good-bg);}
+  .pill.diff{color:var(--bad);border-color:var(--bad);background:var(--bad-bg);}
+  .pill.missing{color:var(--warn);border-color:var(--warn);background:var(--warn-bg);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 14px;}
+  .form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);}
+  .form label.wide{grid-column:1/-1;}
+  .form label input,.form label select{color:var(--ink);}
+  .stepBox{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin-top:12px;}
+  .stepBox h3{margin-top:0 !important;color:var(--ink) !important;font-size:13px !important;}
+  .stepBox.done{border-color:var(--good);background:#f6fbf9;}
+  .stepNo{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;align-items:center;justify-content:center;font-size:12px;margin-inline-end:6px;}
+  .modalBg{position:fixed;inset:0;background:rgba(20,30,28,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50;overflow:auto;}
+  .modal{background:#fff;border-radius:8px;max-width:880px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+  .modal h2{margin:0 0 12px;font-size:16px;}
+  .modal .actions{display:flex;gap:8px;margin-top:16px;}
+  #toast{position:fixed;bottom:18px;left:18px;background:var(--ink);color:#fff;padding:9px 16px;border-radius:6px;opacity:0;transition:opacity .2s;z-index:60;max-width:460px;pointer-events:none;}
+  #toast.show{opacity:1;} #toast.err{background:var(--bad);}
+  .busy{position:fixed;inset:0;background:rgba(255,255,255,.55);display:none;align-items:center;justify-content:center;z-index:70;font-weight:700;}
+  .busy.show{display:flex;}
+  .empty{padding:24px;text-align:center;color:var(--muted);}
+  details summary{cursor:pointer;color:var(--accent);font-size:12.5px;margin:6px 0;}
+  code{background:var(--paper);padding:1px 5px;border-radius:3px;}
+  ol.howto{margin:6px 0;padding-inline-start:20px;} ol.howto li{margin:3px 0;}
+  .modSwitch{display:inline-flex;border:1px solid var(--ink);border-radius:999px;overflow:hidden;margin-inline-end:10px;}
+  .modSwitch button{border:none;border-radius:0;padding:6px 14px;background:#fff;}
+  .modSwitch button.on{background:var(--accent);color:#fff;}
+  .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;font-size:11px;line-height:18px;text-align:center;}
+  .bar{height:7px;background:var(--paper);border-radius:4px;overflow:hidden;min-width:70px;}
+  .bar i{display:block;height:100%;background:var(--accent);}
+  .bar.over i{background:var(--bad);}
+  .stage{font-size:11.5px;white-space:nowrap;}
+  .stage.done{color:var(--good);} .stage.todo{color:var(--muted);} .stage.late{color:var(--bad);font-weight:700;}
+  .alertRow td:first-child{width:6px;padding:0;} .alertRow.bad td:first-child{background:var(--bad);} .alertRow.warn td:first-child{background:var(--warn);} .alertRow.info td:first-child{background:#8aa0c8;}
+  .payLate{color:#c01818 !important;font-weight:800 !important;}
+  .paySoon{color:#1747d1 !important;font-weight:800 !important;}
+  .payDone{color:#0f7a3d !important;font-weight:800 !important;}
+  .pill.late{color:#fff;background:#c01818;border-color:#c01818;font-weight:700;}
+  .pill.soon{color:#fff;background:#1747d1;border-color:#1747d1;font-weight:700;}
+  .pill.paid{color:#fff;background:#0f7a3d;border-color:#0f7a3d;font-weight:700;}
+  .stat.late .value{color:#c01818;} .stat.soon .value{color:#1747d1;} .stat.paid .value{color:#0f7a3d;}
+  .stat.late{border-color:#e7a3a3;} .stat.soon{border-color:#9db4ee;} .stat.paid{border-color:#9fd0b3;}
+  details.fold{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;}
+  details.fold > summary{list-style:none;cursor:pointer;padding:11px 16px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px;color:var(--ink);margin:0;}
+  details.fold > summary::-webkit-details-marker{display:none;}
+  details.fold > summary::before{content:'▸';font-size:12px;color:var(--muted);transition:transform .15s;}
+  details.fold[open] > summary::before{transform:rotate(90deg);}
+  details.fold > summary .sumR{margin-inline-start:auto;font-weight:400;font-size:12px;color:var(--muted);}
+  details.fold > .foldBody{padding:0 16px 14px;}
+  details.fold.inner{border-style:dashed;margin:10px 0 0;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;}
+  .pcard{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;cursor:pointer;}
+  .pcard:hover{border-color:var(--accent);}
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
+  @media (max-width:800px){ .grid2{grid-template-columns:1fr;} main{padding:12px;} header.top{padding:12px;} nav.tabs{padding:10px 12px 0;} }
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>ATLAS MOD · הגשת חשבונות למשהב״ט</h1>
+    <div class="sub">ב.ד. אטלס הנדסה וניהול פרויקטים · טופס 23.030 / 23.031</div>
+  </div>
+  <div class="chips" id="statusChips"></div>
+</header>
+<nav class="tabs" id="tabs"></nav>
+<main id="view"></main>
+<div id="modalRoot"></div>
+<div id="toast"></div>
+<div class="busy" id="busy"><div id="busyText">עובד…</div></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   ATLAS MOD - גרסת דפדפן (קובץ HTML אחד)
+   - גישה לתיקיות: File System Access API (Chrome / Edge), תיקיית בסיס אחת
+   - נתונים: IndexedDB בדפדפן + קובץ ATLAS_MOD_data.json בתיקיית הבסיס
+   - קבצים לא נשלחים לשום מקום; הכל מעובד בדפדפן
+   ===================================================================== */
+const APP_VERSION = '0.2';
+const DATA_FILE = 'ATLAS_MOD_data.json';
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/* ===================================================================== utils */
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const bdi = v => `<bdi dir="ltr">${esc(v)}</bdi>`;
+const num = (v, d = 2) => (v === null || v === undefined || v === '' || isNaN(v)) ? '' : Number(v).toLocaleString('he-IL', {minimumFractionDigits: d, maximumFractionDigits: d});
+const money = v => (v === null || v === undefined || v === '') ? '' : '₪' + num(v, 2);
+const qty = v => (v === null || v === undefined || v === '' || isNaN(v)) ? '' : Number(v).toLocaleString('he-IL', {maximumFractionDigits: 2});
+const r2 = x => x === null || x === undefined ? null : Math.round((Number(x) + 1e-9) * 100) / 100;
+const monthLabel = m => m ? `${m.slice(5, 7)}.${m.slice(0, 4)}` : '';
+const folderName = m => `${m.slice(5, 7)}-${m.slice(0, 4)}`;
+const dateHe = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '';
+const hhmm = h => { const m = Math.round((h || 0) * 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`; };
+const digits = s => String(s ?? '').replace(/\D/g, '');
+const uid = p => `${p}_${Math.random().toString(36).slice(2, 12)}`;
+function shiftMonth(m, k) { let y = +m.slice(0, 4), mm = +m.slice(5, 7) + k; while (mm < 1) { mm += 12; y--; } while (mm > 12) { mm -= 12; y++; } return `${y}-${String(mm).padStart(2, '0')}`; }
+function monthRange(m) { const y = +m.slice(0, 4), mm = +m.slice(5, 7); const last = new Date(Date.UTC(y, mm, 0)).getUTCDate(); return [`${m}-01`, `${m}-${String(last).padStart(2, '0')}`]; }
+function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = '', err ? 7000 : 3000); }
+function busy(on, text) { $('#busy').className = 'busy' + (on ? ' show' : ''); if (text) $('#busyText').textContent = text; }
+async function run(fn, text) { busy(true, text || 'עובד…'); try { return await fn(); } catch (e) { console.error(e); toast(e.message || String(e), true); } finally { busy(false); } }
+function nameTokens(s) { return new Set(String(s || '').trim().split(/[\s\-־]+/).filter(Boolean)); }
+function samePerson(a, b) { const A = nameTokens(a), B = nameTokens(b); if (!A.size || !B.size) return false; const sub = (x, y) => [...x].every(t => y.has(t)); return sub(A, B) || sub(B, A); }
+
+/* ===================================================================== cell values */
+const QUOTES = {'״': '"', '׳': "'", '“': '"', '”': '"', '’': "'", '`': "'"};
+function norm(s) { if (s === null || s === undefined) return ''; return String(s).replace(/[״׳“”’`]/g, c => QUOTES[c]).replace(/''/g, '"').replace(/\s+/g, ''); }
+function serialToIso(v) { const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000); return d.toISOString().slice(0, 10); }
+function isoToSerial(iso) { const [y, m, d] = iso.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000); }
+function toDate(v) {
+  if (typeof v === 'number' && v > 20000 && v < 80000) return serialToIso(v);
+  if (typeof v === 'string') { const m = v.trim().match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/); if (m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`; } }
+  return null;
+}
+function toMinutes(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return Math.abs(v) < 50 ? (v % 1 === v ? v : v % 1) * 1440 : null;
+  const m = String(v).match(/^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/);
+  return m ? +m[1] * 60 + +m[2] + (+(m[3] || 0)) / 60 : null;
+}
+function toHours(v) { if (v === null || v === undefined || v === '') return null; if (typeof v === 'number') return v * 24; const m = toMinutes(v); return m === null ? null : m / 60; }
+function toNumber(v) { if (typeof v === 'number') return v; if (typeof v === 'string') { const t = v.replace(/[,₪\s]/g, ''); if (t !== '' && !isNaN(t)) return Number(t); } return null; }
+const colL = c => XLSX.utils.encode_col(c - 1);
+
+class Sheet {
+  constructor(ws, maxRow = Infinity) {
+    this.ws = ws; this.labels = [];
+    for (const k in ws) {
+      if (k[0] === '!') continue;
+      const c = ws[k];
+      if (c.t === 's' && !c.f && typeof c.v === 'string') {
+        const a = XLSX.utils.decode_cell(k);
+        if (a.r + 1 <= maxRow) this.labels.push([a.r + 1, a.c + 1, norm(c.v), c.v]);
+      }
+    }
+    this.labels.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  }
+  cell(r, c) { return this.ws[XLSX.utils.encode_cell({r: r - 1, c: c - 1})]; }
+  val(r, c) { const x = this.cell(r, c); return x ? (x.v ?? null) : null; }            // כולל ערך שמור של נוסחה
+  input(r, c) { const x = this.cell(r, c); return x && !x.f ? (x.v ?? null) : null; }  // רק תא קלט
+  isF(r, c) { const x = this.cell(r, c); return !!(x && x.f); }
+  find(label, exact = false, rowFrom = 1) { const k = norm(label); for (const [r, c, n] of this.labels) if (r >= rowFrom && (exact ? n === k : n.includes(k))) return [r, c]; return null; }
+  below(label, maxDown = 3, spread = 4) {
+    const p = this.find(label); if (!p) return [null, null];
+    for (let d = 1; d <= maxDown; d++) for (let cc = p[1]; cc <= p[1] + spread; cc++) {
+      if (this.isF(p[0] + d, cc)) continue;
+      const v = this.val(p[0] + d, cc);
+      if (v !== null && v !== '') return [v, colL(cc) + (p[0] + d)];
+    }
+    return [null, null];
+  }
+  rightOf(label, maxCols = 40) {
+    const p = this.find(label); if (!p) return [null, null];
+    for (let cc = p[1] + 1; cc < p[1] + maxCols; cc++) { const x = this.cell(p[0], cc); if (x && (x.f || (x.v !== undefined && x.v !== ''))) return [x.v ?? null, colL(cc) + p[0]]; }
+    return [null, null];
+  }
+  mergeEnd(r, c) { for (const m of this.ws['!merges'] || []) if (m.s.r === r - 1 && m.s.c === c - 1) return m.e.c + 1; return c; }
+  rightInput(label, maxCols = 40) {
+    const p = this.find(label); if (!p) return [null, null];
+    // תא הקלט שאחרי התווית: אחרי סוף טווח המיזוג של התווית (משמש כשהשדה ריק בתבנית)
+    const after = this.mergeEnd(p[0], p[1]) + 1;
+    for (let cc = p[1] + 1; cc < p[1] + maxCols; cc++) { if (this.isF(p[0], cc)) continue; const v = this.val(p[0], cc); if (v !== null && v !== '') return [v, colL(cc) + p[0]]; }
+    return [null, colL(after) + p[0]];
+  }
+}
+function readWb(buf) { return XLSX.read(buf, {type: 'array', cellFormula: true, cellDates: false, cellNF: false, cellStyles: false}); }
+
+/* ===================================================================== 23.031 hours report */
+function looksLike23031(wb) { return wb.SheetNames.some(n => { const ws = wb.Sheets[n]; for (const k of ['A2', 'A3', 'B2', 'C2']) if (ws[k] && String(ws[k].v).includes('23.031')) return true; return false; }); }
+function parse23031(buf, fileName) {
+  const wb = readWb(buf);
+  let wsName = null;
+  for (const n of wb.SheetNames) {
+    const hidden = (wb.Workbook?.Sheets || []).find(s => s.name === n)?.Hidden;
+    if (hidden) continue;
+    const S0 = new Sheet(wb.Sheets[n], 8);
+    if (S0.find('שם העובד המדווח')) { wsName = n; break; }
+  }
+  if (!wsName) throw new Error('הקובץ אינו נראה כטופס 23.031 (לא נמצאה התווית "שם העובד המדווח").');
+  const S = new Sheet(wb.Sheets[wsName]);
+  const warnings = [], notes = [];
+  const formTitle = (S.labels.find(l => l[3].includes('23.031')) || [])[3] || null;
+  const [name] = S.below('שם העובד המדווח'), [pid] = S.below('ת.ז.'), [title] = S.below('התואר המקצועי'),
+    [degree] = S.below('מועד קבלת התואר'), [rate] = S.below('התעריף המבוקש'), [branch] = S.below('שם הגוף הדורש');
+  // מספר הזמנה - יכול להיות מפוצל לכמה תאים
+  let orderNo = null, amendment = null;
+  const op = S.find("הזמנה מס'");
+  if (op) for (const d of [1, 2]) {
+    const parts = []; for (let cc = 1; cc < 10; cc++) { const v = S.input(op[0] + d, cc); if (v !== null && v !== '') parts.push(String(v).trim()); }
+    const txt = parts.join('');
+    if (/\d{3}/.test(txt)) {
+      orderNo = txt;
+      const nx = []; for (let cc = 1; cc < 10; cc++) { const v = S.input(op[0] + d + 1, cc); if (v !== null && v !== '') nx.push(String(v).trim()); }
+      if (nx.join('').includes('הסכם')) amendment = nx.join(' ');
+      break;
+    }
+  }
+  let validFrom = null, validTo = null;
+  const vp = S.find('תוקף ההזמנה');
+  if (vp) for (const rr of [vp[0] + 1, vp[0] + 2]) {
+    const ds = []; for (let cc = 1; cc < 11; cc++) { const d = toDate(S.val(rr, cc)); if (d) ds.push(d); }
+    if (ds.length) { validFrom = ds[0]; validTo = ds[1] || null; break; }
+  }
+  const [monthly] = S.below('מספר שעות עבודה בחודש'), [ordered] = S.below('מספר ש"ע מוזמנות לעובד'),
+    [paidBefore] = S.below('סה"כ ש"ע שבוצעו (ששולמו)'), [deal] = S.below('מספר חשבונית עסקה');
+
+  const hdr = S.find('תאריך', true), cS = S.find('התחלה', true), cE = S.find('סיום', true), cB = S.find('לקיזוז', true),
+    cBill = S.find('לחיוב', true), cDesc = S.find('תאור השרותים שבוצעו');
+  const stop = S.find('החזר הוצאות נסיעה') || S.find('סה"כ ש"ע לתשלום');
+  if (!hdr || !cS || !cE) throw new Error('לא נמצאו עמודות תאריך / שעת התחלה / שעת סיום בטופס.');
+  const first = Math.max(cS[0], hdr[0]) + 1, last = stop ? stop[0] - 1 : first + 60;
+  let best = [0, hdr[1]];
+  for (let cc = Math.max(1, hdr[1] - 3); cc <= hdr[1] + 3; cc++) { let n = 0; for (let r = first; r <= last; r++) if (toDate(S.val(r, cc))) n++; if (n > best[0]) best = [n, cc]; }
+  const dateCol = best[1];
+  const rows = [];
+  for (let r = first; r <= last; r++) {
+    const d = toDate(S.val(r, dateCol)); if (!d) continue;
+    const s = toMinutes(S.val(r, cS[1])), e = toMinutes(S.val(r, cE[1]));
+    if (s === null && e === null) continue;
+    const row = {row: r, date: d, start: null, end: null, brk: 0, hours: 0, formHours: null, desc: null, issues: []};
+    const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+    if (s !== null) row.start = fmt(s); if (e !== null) row.end = fmt(e);
+    if (s === null || e === null) row.issues.push('חסרה שעת התחלה או סיום');
+    else {
+      let dur = e - s; if (dur < 0) { row.issues.push('שעת סיום לפני שעת התחלה'); dur = 0; }
+      let brk = 0;
+      if (cB) {
+        if (S.isF(r, cB[1])) { const c = toMinutes(S.val(r, cB[1])); brk = c !== null ? c : (dur >= 721 ? 60 : dur >= 361 ? 30 : 0); }
+        else brk = toMinutes(S.val(r, cB[1])) || 0;
+      }
+      row.brk = brk / 60; row.hours = Math.round((dur - brk) / 60 * 10000) / 10000;
+    }
+    if (cBill) { const fh = toHours(S.val(r, cBill[1])); row.formHours = fh === null ? null : Math.round(fh * 10000) / 10000; if (fh !== null && Math.abs(fh - row.hours) > 0.01) row.issues.push(`בטופס ${fh.toFixed(2)} ש׳, בחישוב ${row.hours.toFixed(2)} ש׳`); }
+    if (cDesc) { const x = S.val(r, cDesc[1]); row.desc = x ? String(x).trim() : null; }
+    rows.push(row);
+  }
+  const computed = r2(rows.reduce((a, x) => a + x.hours, 0));
+  const [fd, fdCell] = S.rightOf('סה"כ ש"ע לתשלום (המרה לשבר עשרוני)');
+  const formDecimal = toNumber(fd) !== null ? r2(toNumber(fd)) : null;
+  let hoursFinal, hoursSource;
+  if (formDecimal === null) { notes.push('בקובץ אין ערך שמור לשדה "סה״כ ש״ע לתשלום (המרה לשבר עשרוני)". נעשה שימוש בסכום המחושב משורות הדיווח.'); hoursFinal = computed; hoursSource = 'חישוב משורות הדיווח'; }
+  else { hoursFinal = formDecimal; hoursSource = `שדה הטופס "סה״כ ש״ע לתשלום (המרה לשבר עשרוני)" (${fdCell})`; if (Math.abs(formDecimal - computed) > 0.01) warnings.push(`סה״כ השעות בטופס (${formDecimal}) שונה מסכום שורות הדיווח (${computed}). נא לבדוק.`); }
+  const [yok] = S.rightOf('האם כל התאים הצהובים מולאו'), [dok] = S.rightOf('האם מולאו כל התאים הרלוונטים');
+  if (yok && String(yok).trim() !== 'תקין') warnings.push('בדיקת הטופס: לא כל התאים הצהובים (שדות חובה) מולאו.');
+  if (dok && String(dok).trim() !== 'תקין') warnings.push('בדיקת הטופס: יש שורות עם שעות ללא תיאור שירות (או להפך).');
+  let kmPerDay = null; const kp = S.find('ק"מ מאושר', true);
+  if (kp) kmPerDay = toNumber(S.val(kp[0] + 1, kp[1]));
+  if (kmPerDay === null) kmPerDay = toNumber(S.below('סה"כ ק"מ יומי מאושר לפני הפחתה')[0]);
+  const kmRate = toNumber(S.rightOf('תעריף לק"מ')[0]), formKm = toNumber(S.rightOf('סה"כ ק"מ:')[0]);
+  const worked = [...new Set(rows.filter(x => x.hours > 0).map(x => x.date))].sort();
+  const kmCalc = kmPerDay !== null ? worked.length * kmPerDay : null;
+  const rowsWithHours = rows.filter(x => x.hours > 0).length;
+  if (formKm !== null && kmCalc !== null && Math.abs(formKm - kmCalc) > 0.01)
+    warnings.push(`הטופס מחשב ${qty(formKm)} ק״מ (${rowsWithHours} שורות דיווח), אבל יש רק ${worked.length} ימי עבודה ייחודיים → ${qty(kmCalc)} ק״מ. לחיוב נלקח ${qty(kmCalc)} (ימים ייחודיים × מכסה יומית).`);
+  const months = [...new Set(rows.map(x => x.date.slice(0, 7)))].sort();
+  if (months.length > 1) warnings.push('בדוח יש תאריכים מכמה חודשים: ' + months.join(', '));
+  if (!rows.length) warnings.push('לא נמצאו שורות דיווח עם שעות.');
+  const cnt = {}; rows.forEach(x => cnt[x.date] = (cnt[x.date] || 0) + 1);
+  rows.forEach(x => { x.sameDay = cnt[x.date]; if (x.issues.length) warnings.push(`שורה ${x.row} (${dateHe(x.date)}): ${x.issues.join('; ')}`); });
+  const txt = v => v === null || v === undefined || v === '' ? null : String(v).trim();
+  return {
+    kind: '23.031', file: fileName, sheet: wsName, formTitle,
+    employee: {name: txt(name), personalId: pid === null ? null : String(pid).trim(), title: txt(title), degreeDate: toDate(degree), rate: toNumber(rate)},
+    order: {branch: txt(branch), number: orderNo, amendment, validFrom, validTo, monthlyApprovedHours: r2(toHours(monthly)),
+      orderedHours: r2(toHours(ordered)), paidHoursBefore: r2(toHours(paidBefore)), dealInvoiceNo: txt(deal)},
+    month: months.length === 1 ? months[0] : null, rows,
+    hours: {final: hoursFinal, source: hoursSource, formDecimal, computed},
+    km: {perDay: kmPerDay, rate: kmRate, uniqueDays: worked.length, workedDates: worked, rowsWithHours, formTotal: formKm, final: kmCalc},
+    warnings, notes,
+  };
+}
+
+/* ===================================================================== 23.030 invoice: read */
+const INPUT_LAST_ROW = 95;
+function findInvoiceSheet(wb) {
+  for (const n of wb.SheetNames) { const ws = wb.Sheets[n]; for (const k of ['A2', 'B2', 'C2', 'D2']) { const c = ws[k]; if (c && !c.f && String(c.v).includes('23.030')) return n; } }
+  return null;
+}
+function readInvoice(buf, fileName) {
+  const wb = readWb(buf);
+  const sheet = findInvoiceSheet(wb);
+  if (!sheet) throw new Error('הקובץ אינו טופס 23.030 (לא נמצאה כותרת "טופס 23.030").');
+  const S = new Sheet(wb.Sheets[sheet], INPUT_LAST_ROW);
+  const cells = {};
+  const field = (label, key) => { const [v, ref] = S.rightInput(label); cells[key] = ref; return v; };
+  const op = S.find('מספר הזמנה:'); const parts = []; cells.order = [];
+  if (op) for (let cc = op[1] + 1; cc < op[1] + 40; cc++) { const v = S.input(op[0], cc); if (v !== null && v !== '' && /\d/.test(String(v))) { parts.push(String(v).trim()); cells.order.push(colL(cc) + op[0]); } }
+  const orderDisplay = parts.filter(p => p.endsWith('/')).join('') + parts.filter(p => !p.endsWith('/')).join('');
+  const invNo = field('חשבון חלקי/סופי מס', 'invoiceNo'), invType = field('תיאור סוג החשבון', 'invoiceType'),
+    deal = field('מספר חשבונית עסקה', 'dealInvoiceNo'), dFrom = field('עבור שירותים שבוצעו מתאריך', 'periodFrom');
+  const [dTo, refTo] = S.rightInput('עד תאריך:'); cells.periodTo = refTo;
+  const cEnd = field('מועד סיום החוזה', 'contractEnd');
+  let vat = null; const vp = S.find('לפי מע"מ של');
+  if (vp) for (let cc = vp[1]; cc < vp[1] + 4; cc++) { const v = toNumber(S.input(vp[0] + 1, cc)); if (v !== null) { vat = v; break; } }
+  const hdr = S.find('שעות עבודה שהושקעו בפועל');
+  if (!hdr) throw new Error('לא נמצאה טבלת "תשלום לפי ש"ע" בטופס.');
+  const hr = hdr[0];
+  const col = label => { const p = S.find(label, false, hr - 1); return p && p[0] <= hr + 5 ? p[1] : null; };
+  const cols = {name: col('שם העובד'), budget: col('סה"כ תקציב'), employment: col('העסקת'), classification: col('סיווג העובד'),
+    rate: col('מחיר ש"ע בתוקף'), qty: hdr[1], pay: col('שכר לתשלום'), prev: col('סה"כ תשלומים'), cum: col('סה"כ תשלום מצטבר'), remain: col('סה"כ יתרת תקציב')};
+  let first = null; for (let r = hr + 1; r < hr + 10; r++) if (norm(S.val(r, cols.name)) === 'א') { first = r + 1; break; }
+  const tot = S.find('סה"כ הזמנה', false, hr); const last = tot ? tot[0] - 1 : first + 9;
+  const lines = [], slots = [];
+  for (let r = first; r <= last; r++) {
+    const c = {}; for (const [k, v] of Object.entries(cols)) if (v) c[k] = colL(v) + r;
+    const nm = S.input(r, cols.name); if (nm === null || nm === '') { slots.push({row: r, no: S.val(r, 2), cells: c}); continue; }
+    const rate = toNumber(S.input(r, cols.rate)), q = toNumber(S.input(r, cols.qty)) || 0, prev = toNumber(S.input(r, cols.prev)) || 0, budget = toNumber(S.input(r, cols.budget));
+    const cur = rate !== null ? r2(q * rate) : null, cum = r2(prev + (cur || 0));
+    const kind = /רכב|ק"מ|נסיע/.test(String(nm)) || (rate !== null && rate < 10) ? 'km' : 'hours';
+    lines.push({row: r, no: S.val(r, 2), name: String(nm).trim(), kind, budget, employment: cols.employment ? S.input(r, cols.employment) : null, classification: cols.classification ? S.input(r, cols.classification) : null,
+      rate, qty: q, prevCumulative: r2(prev), current: cur, cumulative: cum, remaining: budget !== null ? r2(budget - cum) : null, cells: c});
+  }
+  return {kind: '23.030', file: fileName, sheet, orderDisplay, orderDigits: digits(orderDisplay),
+    invoiceNo: toNumber(invNo) !== null ? Math.round(toNumber(invNo)) : null, invoiceType: invType ? String(invType).trim() : null,
+    dealInvoiceNo: deal !== null && deal !== '' ? String(deal).trim() : null, periodFrom: toDate(dFrom), periodTo: toDate(dTo), contractEnd: toDate(cEnd), vat, lines, slots, cells};
+}
+
+/* ===================================================================== 23.030 invoice: plan + write (XML patch) */
+/* repLines: [{itemNo, type, qty}] - כמויות החודש לפי פריט בהזמנה.
+   כל פריט פעיל בהזמנה (שהתחיל עד סוף החודש) ממופה לשורה בטופס לפי הסדר: פריט השעות הראשון -> שורת השעות הראשונה בטופס וכו'.
+   פריט שאין לו עדיין שורה בטופס (למשל פריטים 30/40 בהזמנת המשך) - נוספת לו שורה בשורה הפנויה הבאה בטופס. */
+function planNextInvoice(prev, employeeName, order, month, invoiceNo, repLines, dealNo, invoiceType, isFirst) {
+  const [d1, d2] = monthRange(month);
+  const changes = {[prev.cells.invoiceNo]: Number(invoiceNo), [prev.cells.periodFrom]: {date: d1}, [prev.cells.periodTo]: {date: d2}};
+  if (dealNo) changes[prev.cells.dealInvoiceNo] = String(dealNo);
+  if (invoiceType) changes[prev.cells.invoiceType] = invoiceType;
+  const notes = [];
+  if (order?.validTo && prev.cells.contractEnd && prev.contractEnd !== order.validTo) { changes[prev.cells.contractEnd] = {date: order.validTo}; notes.push(`מועד סיום החוזה יעודכן ל-${dateHe(order.validTo)} (לפי ההזמנה)`); }
+  const review = [], slots = prev.slots.slice();
+  const qtyOf = (ol, type) => { const m = repLines.filter(x => x.type === type && (ol ? String(x.itemNo ?? '') === String(ol.itemNo ?? '') : true)); return r2(m.reduce((a, x) => a + (Number(x.qty) || 0), 0)); };
+  for (const [type, label] of [['hours', 'שעות'], ['km', 'ק"מ']]) {
+    let fRows = prev.lines.filter(l => l.kind === type);
+    if (type === 'hours') { const mine = fRows.filter(l => samePerson(l.name, employeeName)); if (mine.length) fRows = mine; }
+    const oAll = linesOf(order, type);
+    const oRows = oAll.filter(l => !l.from || l.from <= d2);           // פריטים שהתחילו עד סוף החודש
+    if (!oRows.length && !fRows.length) continue;
+    if (!oAll.length) {                                                 // הזמנה ללא פירוט שורות - כמו קודם
+      if (fRows.length !== 1) throw new Error(`לא ניתן לזהות באופן חד-משמעי את שורת ה${label} בטופס (${fRows.length} שורות).`);
+      oRows.push(null);
+    }
+    if (fRows.length > oRows.length) throw new Error(`בטופס יש ${fRows.length} שורות ${label} ובהזמנה רק ${oRows.length} פריטי ${label} פעילים - נדרשת בדיקה ידנית.`);
+    oRows.forEach((ol, i) => {
+      let f = fRows[i], added = false;
+      if (!f) {                                                         // פריט חדש בהזמנה - מוסיפים שורה לטופס
+        const slot = slots.shift(); if (!slot) throw new Error('אין שורה פנויה בטופס להוספת פריט ' + (ol?.itemNo || ''));
+        const tpl = fRows[0] || prev.lines.find(l => l.kind === type) || prev.lines[0];
+        f = {row: slot.row, no: slot.no, name: tpl?.name || (type === 'hours' ? employeeName : 'הוצאות רכב'), kind: type, budget: ol.budget ?? null, rate: ol.rate,
+          employment: tpl?.employment, classification: tpl?.classification, cumulative: 0, cells: slot.cells};
+        changes[f.cells.name] = f.name; if (f.cells.budget) changes[f.cells.budget] = ol.budget ?? null; changes[f.cells.rate] = ol.rate;
+        if (f.cells.employment && f.employment) changes[f.cells.employment] = f.employment;
+        if (f.cells.classification && f.classification) changes[f.cells.classification] = f.classification;
+        added = true;
+      }
+      const q = ol ? qtyOf(ol, type) : qtyOf(null, type);
+      const pc = isFirst || added ? 0 : f.cumulative, cur = r2(q * f.rate), cum = r2(pc + cur);
+      changes[f.cells.qty] = q; changes[f.cells.prev] = pc ? pc : null;
+      let budget = f.budget, budgetChanged = false;
+      if (!added && ol?.budget && f.cells.budget && Math.abs((f.budget || 0) - ol.budget) > 0.005) { changes[f.cells.budget] = ol.budget; budget = ol.budget; budgetChanged = true; }
+      if (ol?.rate && Math.abs(ol.rate - f.rate) > 0.0001) notes.push(`שים לב: התעריף בשורה ${f.no} בטופס (${f.rate}) שונה מהתעריף בפריט ${ol.itemNo} בהזמנה (${ol.rate}).`);
+      review.push({label, item: ol?.itemNo || '', formNo: f.no, name: f.name, added, budgetChanged, qty: q, rate: f.rate, prevCumulative: r2(pc), current: cur, cumulative: cum, budget,
+        remaining: budget !== null && budget !== undefined ? r2(budget - cum) : null, overBudget: budget !== null && budget !== undefined && cum > budget + 0.005});
+    });
+    const unused = repLines.filter(x => x.type === type && Number(x.qty) > 0 && !oRows.some(ol => ol && String(ol.itemNo ?? '') === String(x.itemNo ?? '')) && oAll.length);
+    if (unused.length) throw new Error(`יש כמות לחיוב בפריט ${unused.map(x => x.itemNo).join(', ')} שאינו פעיל בחודש זה.`);
+  }
+  const total = r2(review.reduce((a, x) => a + x.current, 0)), vat = prev.vat || 0;
+  return {changes, review, notes, totalNoVat: total, vat, totalWithVat: r2(total * (1 + vat)), periodFrom: d1, periodTo: d2};
+}
+function xmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function cellXml(ref, style, value) {
+  const s = style ? ` s="${style}"` : '';
+  if (value === null || value === undefined || value === '') return `<c r="${ref}"${s}/>`;
+  if (typeof value === 'object' && value.f) return `<c r="${ref}"${s}><f>${xmlEsc(value.f)}</f></c>`;
+  if (typeof value === 'object' && value.date) value = isoToSerial(value.date);
+  if (typeof value === 'object' && value.minutes !== undefined) value = Math.round(value.minutes) / 1440;
+  if (typeof value === 'number') return `<c r="${ref}"${s}><v>${value}</v></c>`;
+  return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(value)}</t></is></c>`;
+}
+function setCell(xml, ref, value) {
+  const re = new RegExp(`<c r="${ref}"([^>]*?)(?:/>|>([\\s\\S]*?)</c>)`);
+  const m = re.exec(xml);
+  if (m) { const st = /\ss="(\d+)"/.exec(m[1]); return xml.slice(0, m.index) + cellXml(ref, st && st[1], value) + xml.slice(m.index + m[0].length); }
+  const [, col, row] = /^([A-Z]+)(\d+)$/.exec(ref);
+  const ci = XLSX.utils.decode_col(col);
+  const rm = new RegExp(`<row r="${row}"([^>]*?)(?:/>|>([\\s\\S]*?)</row>)`).exec(xml);
+  if (!rm) throw new Error(`שורה ${row} לא נמצאה בגיליון`);
+  let body = rm[2] || '', pos = body.length;
+  const cre = /<c r="([A-Z]+)\d+"/g; let cm;
+  while ((cm = cre.exec(body))) if (XLSX.utils.decode_col(cm[1]) > ci) { pos = cm.index; break; }
+  body = body.slice(0, pos) + cellXml(ref, null, value) + body.slice(pos);
+  return xml.slice(0, rm.index) + `<row r="${row}"${rm[1]}>${body}</row>` + xml.slice(rm.index + rm[0].length);
+}
+function stripFormulaCache(xml) {
+  return xml.replace(/<c(\s[^>]*?)>([\s\S]*?)<\/c>/g, (all, attrs, body) => {
+    if (!body.includes('<f')) return all;
+    return `<c${attrs.replace(/\st="[^"]*"/, '')}>${body.replace(/<v>[\s\S]*?<\/v>|<v\/>/g, '')}</c>`;
+  });
+}
+async function writeInvoice(srcBuf, sheetName, changes, opts = {}) {
+  const zip = await JSZip.loadAsync(srcBuf);
+  const wbXml = await zip.file('xl/workbook.xml').async('string');
+  const rels = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const relMap = {}; for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) { const id = /Id="([^"]+)"/.exec(m[0]), tg = /Target="([^"]+)"/.exec(m[0]); if (id && tg) relMap[id[1]] = tg[1]; }
+  let target = null, targetIdx = -1, idx = 0;
+  const sheetPath = {};
+  for (const m of wbXml.matchAll(/<sheet\b[^>]*>/g)) {
+    const nm = /name="([^"]+)"/.exec(m[0]), rid = /r:id="([^"]+)"/.exec(m[0]);
+    const name = nm && nm[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'");
+    let t = rid ? relMap[rid[1]].replace(/^\//, '') : ''; t = t.startsWith('xl/') ? t : 'xl/' + t; sheetPath[name] = t;
+    if (name === sheetName && rid) { target = t; targetIdx = idx; }
+    idx++;
+  }
+  if (!target) throw new Error(`הגיליון "${sheetName}" לא נמצא בקובץ`);
+  for (const path of Object.keys(zip.files)) {
+    if (/^xl\/worksheets\/sheet\d+\.xml$/.test(path)) {
+      let x = await zip.file(path).async('string');
+      if (path === target) {
+        // נוסחאות משותפות (shared) הופכות לנוסחאות רגילות, כדי שעדכון תא "ראשי" לא ישבור את התאים שתלויים בו
+        const wsp = readWb(srcBuf).Sheets[sheetName];
+        x = x.replace(/<c r="([A-Z]+\d+)"([^>]*)><f t="shared"[^>]*?(?:\/>|>[^<]*<\/f>)/g, (all, ref, at) => wsp[ref]?.f ? `<c r="${ref}"${at}><f>${xmlEsc(wsp[ref].f)}</f>` : all);
+        for (const [ref, v] of Object.entries(changes)) x = setCell(x, ref, v);
+      }
+      if (opts.activate) {  // רק הגיליון שנבחר מסומן כפעיל
+        x = x.replace(/\stabSelected="1"/g, '');
+        if (path === target) x = x.replace(/<sheetView\b/, '<sheetView tabSelected="1"');
+      }
+      zip.file(path, stripFormulaCache(x));
+    }
+  }
+  let wx = wbXml;
+  if (opts.hide?.length) wx = wx.replace(/<sheet\b[^>]*>/g, tag => {
+    const nm = /name="([^"]+)"/.exec(tag); const name = nm && nm[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'");
+    if (!opts.hide.includes(name)) return tag;
+    return /\sstate="/.test(tag) ? tag.replace(/\sstate="[^"]*"/, ' state="hidden"') : tag.replace(/<sheet\b/, '<sheet state="hidden"');
+  });
+  if (opts.activate && targetIdx >= 0) wx = wx.replace(/<workbookView\b([^>]*?)(\/?)>/, (a, at, sl) => `<workbookView${at.replace(/\s(activeTab|firstSheet)="[^"]*"/g, '')} activeTab="${targetIdx}"${sl}>`);
+  wx = /<calcPr\b/.test(wx) ? wx.replace(/<calcPr\b([^>]*?)\s*\/>/, (a, at) => `<calcPr${at.replace(/\sfullCalcOnLoad="[^"]*"/, '')} fullCalcOnLoad="1"/>`) : wx.replace('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
+  zip.file('xl/workbook.xml', wx);
+  if (zip.file('xl/calcChain.xml')) {
+    zip.remove('xl/calcChain.xml');
+    const ct = await zip.file('[Content_Types].xml').async('string');
+    zip.file('[Content_Types].xml', ct.replace(/<Override[^>]*calcChain[^>]*\/>/, ''));
+    zip.file('xl/_rels/workbook.xml.rels', rels.replace(/<Relationship[^>]*calcChain[^>]*\/>/, ''));
+  }
+  return zip.generateAsync({type: 'uint8array', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+/* ===================================================================== attendance app export -> 23.031 */
+function parseAttendance(buf, fileName) {
+  const wb = readWb(buf); const ws = wb.Sheets[wb.SheetNames[0]]; const S = new Sheet(ws);
+  const hdrDate = S.labels.find(l => l[2] === 'תאריך'); if (!hdrDate) throw new Error('לא נמצאה כותרת "תאריך" בקובץ הנוכחות.');
+  const hr = hdrDate[0]; const cols = {};
+  for (const [r, c, n] of S.labels) if (r === hr) { if (n === 'כניסה' && !cols.in) cols.in = c; if (n === 'יציאה' && !cols.out) cols.out = c; if (n === 'הערה') (cols.notes = cols.notes || []).push(c); if (n === 'משימה') (cols.tasks = cols.tasks || []).push(c); if (n === 'סה"כ' && !cols.total) cols.total = c; }
+  if (!cols.in || !cols.out) throw new Error('לא נמצאו עמודות "כניסה" / "יציאה" בקובץ הנוכחות.');
+  const title = S.labels.filter(l => l[0] < hr).map(l => l[3]).join(' | ');
+  const rows = []; const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = hr + 1; r <= range.e.r + 1; r++) {
+    const date = toDate(S.val(r, hdrDate[1])); if (!date) continue;
+    const a = toMinutes(S.val(r, cols.in)), b = toMinutes(S.val(r, cols.out));
+    if (a === null && b === null) continue;
+    const pick = cs => (cs || []).map(c => S.val(r, c)).find(v => v && String(v).trim()) || '';
+    const note = String(pick(cols.notes)).replace(/[‎‏]/g, '').trim(), task = String(pick(cols.tasks)).trim();
+    const issues = []; let mins = null;
+    if (a === null || b === null) issues.push('חסרה כניסה או יציאה'); else { mins = b - a; if (mins < 0) { issues.push('יציאה לפני כניסה'); mins = null; } }
+    rows.push({row: r, date, start: a, end: b, minutes: mins, note, task, desc: note || task, issues});
+  }
+  const months = [...new Set(rows.map(x => x.date.slice(0, 7)))];
+  return {file: fileName, title, rows, month: months.length === 1 ? months[0] : null, months};
+}
+function templateSheets23031(buf) {
+  const wb = readWb(buf); const out = [];
+  for (const n of wb.SheetNames) {
+    const S = new Sheet(wb.Sheets[n]); if (!S.find('שם העובד המדווח')) continue;
+    const hidden = !!(wb.Workbook?.Sheets || []).find(x => x.name === n)?.Hidden;
+    let order = null; const op = S.find("הזמנה מס'");
+    if (op) for (const d of [1, 2]) { const parts = []; for (let cc = 1; cc < 10; cc++) { const v = S.input(op[0] + d, cc); if (v !== null && v !== '') parts.push(String(v).trim()); } if (/\d{3}/.test(parts.join(''))) { order = parts.join(''); break; } }
+    let vf = null, vt = null; const vp = S.find('תוקף ההזמנה');
+    if (vp) for (const rr of [vp[0] + 1, vp[0] + 2]) { const ds = []; for (let cc = 1; cc < 11; cc++) { const d = toDate(S.val(rr, cc)); if (d) ds.push(d); } if (ds.length) { vf = ds[0]; vt = ds[1] || null; break; } }
+    out.push({name: n, hidden, order, validFrom: vf, validTo: vt, employee: S.below('שם העובד המדווח')[0], rate: toNumber(S.below('התעריף המבוקש')[0]),
+      monthlyHours: r2(toHours(S.below('מספר שעות עבודה בחודש')[0])), dealNo: S.below('מספר חשבונית עסקה')[0], kmPerDay: (() => { const k = S.find('ק"מ מאושר', true); return k ? toNumber(S.val(k[0] + 1, k[1])) : null; })()});
+  }
+  return out;
+}
+/* ממלא טופס 23.031 מתוך רשומות נבחרות. entries: [{date, start, end, desc}] (דקות). */
+async function build23031(buf, sheetName, entries, o) {
+  const wb = readWb(buf); const ws = wb.Sheets[sheetName]; const S = new Sheet(ws);
+  const hdr = S.find('תאריך', true), cS = S.find('התחלה', true), cE = S.find('סיום', true), cB = S.find('לקיזוז', true), cY = S.find('לחיוב', true),
+    cAC = S.find('באותהעת', true), cAF = S.find('ההזמנות', true), cD = S.find('תאור השרותים שבוצעו'), stop = S.find('החזר הוצאות נסיעה');
+  if (!hdr || !cS || !cE || !cY || !cD) throw new Error('מבנה טופס 23.031 לא מזוהה בגיליון שנבחר.');
+  const first = Math.max(cS[0], hdr[0]) + 1, last = (stop ? stop[0] : first + 40) - 1;
+  // עמודת התאריך: העמודה שמשמאל ל"יום" (מספור) - בטופס הנתונים בעמודה L כשהכותרת "תאריך" ממוזגת ב-M
+  // טווח שורות הדיווח לפי נוסחת הסכום של הטופס (SUM(Y11:Y41)); אחרת - שורות עם מספור
+  const totL = S.find('סה"כ ש"ע לתשלום', true); let sumRange = null;
+  if (totL) for (let cc = totL[1] + 1; cc < totL[1] + 30; cc++) { const c = S.cell(totL[0], cc); const m = c?.f && /SUM\(\$?[A-Z]+\$?(\d+):\$?[A-Z]+\$?(\d+)\)/.exec(c.f); if (m) { sumRange = [+m[1], +m[2]]; break; } }
+  const r0 = sumRange ? sumRange[0] : (() => { for (let r = first; r <= last; r++) for (let cc = hdr[1] - 3; cc < hdr[1]; cc++) if (S.input(r, cc) === 1) return r; return first; })();
+  // עמודת התאריך: מימין לעמודת המספור (1,2,3...) - בטופס הנתונים בעמודה L כשהכותרת "תאריך" ממוזגת ב-M
+  const kCol = (() => { for (let cc = hdr[1] - 3; cc < hdr[1]; cc++) if (S.input(r0, cc) === 1 && S.input(r0 + 1, cc) === 2) return cc; return null; })();
+  const dateCol = kCol ? kCol + 1 : hdr[1];
+  const rows = []; for (let r = r0; r <= last; r++) if (sumRange ? r <= sumRange[1] : (!kCol || typeof S.val(r, kCol) === 'number')) rows.push(r);
+  if (entries.length > rows.length) throw new Error(`בטופס יש ${rows.length} שורות דיווח בלבד, ונבחרו ${entries.length} רשומות.`);
+  const L = colL; const ch = {};
+  // נוסחאות השורה כפי שהן בטופס (מועתקות לכל שורה שממולאת); אם אין בכלל - הנוסחה הרגילה של הטופס
+  const tplF = col => { for (const r of rows) { const c = S.cell(r, col); if (c && c.f) return {r, f: c.f}; } return null; };
+  const fY = tplF(cY[1]), fAF = cAF ? tplF(cAF[1]) : null, fX = cB ? tplF(cB[1]) : null;
+  const shiftF = (t, r) => t.f.replace(new RegExp(`(\\$?[A-Z]{1,3})${t.r}(?!\\d)`, 'g'), (m, c) => c.startsWith('$') && false ? m : `${c}${r}`);
+  const defY = r => `IF(${L(cE[1])}${r}="","",${L(cE[1])}${r}-${L(cS[1])}${r}${cB ? '-' + L(cB[1]) + r : ''})`;
+  rows.forEach((r, i) => {
+    const e = entries[i];
+    ch[L(dateCol) + r] = e ? {date: e.date} : null;
+    ch[L(cS[1]) + r] = e ? {minutes: e.start} : null;
+    ch[L(cE[1]) + r] = e ? {minutes: e.end} : null;
+    ch[L(cD[1]) + r] = e ? e.desc : null;
+    if (e) {
+      ch[L(cY[1]) + r] = {f: fY ? shiftF(fY, r) : defY(r)};
+      if (cAF) ch[L(cAF[1]) + r] = {f: fAF ? shiftF(fAF, r) : `IF(${L(cY[1])}${r}="","",${L(cY[1])}${r}${cAC ? '+' + L(cAC[1]) + r : ''})`};
+      if (fX) ch[L(cB[1]) + r] = {f: shiftF(fX, r)};
+    }
+  });
+  const notes = [];
+  if (o.dealNo !== undefined) { const [, ref] = S.below('מספר חשבונית עסקה'); const p = S.find('מספר חשבונית עסקה'); ch[ref || L(p[1] + 2) + (p[0] + 1)] = o.dealNo || null; }
+  const kp = S.find('ק"מ מאושר', true); if (kp && o.kmPerDay !== undefined) ch[L(kp[1]) + (kp[0] + 1)] = o.kmPerDay;
+  const kmTot = S.find('סה"כ ק"מ:');
+  if (kmTot) { const after = S.mergeEnd(kmTot[0], kmTot[1]) + 1; const c = S.cell(kmTot[0], after);
+    if (c && c.f) notes.push('סה״כ הק״מ בטופס מחושב בנוסחה של הטופס (לפי מספר שורות) - המערכת תחשב לפי ימים ייחודיים.');
+    else ch[L(after) + kmTot[0]] = o.kmTotal; }
+  // סה"כ עשרוני: מקשרים לסה"כ של אותו גיליון (בטופס שהועתק הנוסחה עלולה להצביע לגיליון אחר)
+  const tot = S.find('סה"כ ש"ע לתשלום', true), dec = S.find('סה"כ ש"ע לתשלום (המרה לשבר עשרוני)');
+  if (tot && dec) { const tRef = (() => { for (let cc = tot[1] + 1; cc < tot[1] + 30; cc++) { const c = S.cell(tot[0], cc); if (c && c.f) return L(cc) + tot[0]; } return null; })();
+    const dRef = (() => { for (let cc = dec[1] + 1; cc < dec[1] + 30; cc++) { const c = S.cell(dec[0], cc); if (c && (c.f || c.v !== undefined)) return L(cc) + dec[0]; } return null; })();
+    if (tRef && dRef) { const cur = S.ws[dRef]; if (cur?.f && cur.f.replace(/\s/g, '') !== `${tRef}*24`) notes.push(`תוקנה נוסחת "סה״כ ש״ע (המרה לשבר עשרוני)" (${cur.f}) כך שתחושב מהגיליון הזה.`); ch[dRef] = {f: `${tRef}*24`}; } }
+  // תאריך חתימה
+  const sig = S.find('שם פרטי ומשפחה');
+  if (sig && o.signDate) { const dl = S.labels.find(l => l[0] === sig[0] && l[2] === 'תאריך'); if (dl) for (let r = sig[0] + 1; r <= sig[0] + 3; r++) if (toDate(S.val(r, dl[1]))) ch[L(dl[1]) + r] = {date: o.signDate}; }
+  const others = templateSheets23031(buf).filter(x => x.name !== sheetName && !x.hidden).map(x => x.name);
+  const bytes = await writeInvoice(buf, sheetName, ch, {hide: others, activate: true});
+  if (others.length) notes.push(`גיליונות אחרים בקובץ הוסתרו (${others.join(', ')}) כדי שיודפס רק הגיליון של ההזמנה.`);
+  return {bytes, notes, rowsUsed: entries.length, rowsAvailable: rows.length};
+}
+
+/* ===================================================================== order PDF */
+async function parseOrderPdf(buf, fileName) {
+  if (!window.pdfjsLib) throw new Error('רכיב קריאת PDF לא נטען (בדוק חיבור לאינטרנט).');
+  const doc = await pdfjsLib.getDocument({data: new Uint8Array(buf)}).promise;
+  const pages = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const rows = {};
+    for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const y = Math.round(it.transform[5] / 3); (rows[y] = rows[y] || []).push(it); }
+    pages.push(Object.keys(rows).map(Number).sort((a, b) => b - a).map(y => rows[y].sort((a, b) => b.transform[4] - a.transform[4]).map(i => i.str.trim()).join(' ')));
+  }
+  const text = pages.flat().join('\n');
+  const find = re => { const m = re.exec(text); return m ? m[1] : null; };
+  const iso = d => { if (!d) return null; let [dd, mm, yy] = d.split('.'); if (yy.length === 2) yy = '20' + yy; return `${yy}-${mm}-${dd}`; };
+  const n = s => s === null ? null : Number(String(s).replace(/,/g, ''));
+  const number = find(/\b(444\d{7})\b/);
+  const version = find(/444\d{7}\s*\(\s*(\d+)\s*\)/) || find(/גרסה\s*(\d+)/);
+  let approved = null; const am = /המאושר\s+הינו\s+(.+?)\n(.*?)\s*בהיקף/.exec(text) || /המאושר\s+הינו\s+(.+?)\s*בהיקף/.exec(text);
+  if (am) approved = (am[1] + ' ' + (am[2] || '')).trim();
+  const items = [];
+  for (const pg of pages) pg.forEach((line, i) => {
+    const ns = line.match(/[\d,]+(?:\.\d+)?/g) || [];
+    if (ns.length !== 3 || /[\u0590-\u05FF]/.test(line)) return;
+    const [q, rate, total] = ns.map(n); if (!q || !rate || !total || Math.abs(q * rate - total) > 1) return;
+    const nx = pg[i + 1] || ''; const mm = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(nx); if (!mm) return;
+    const rest = mm[3]; const unit = /שעה/.test(rest) ? 'שעה' : /(^|\s)יח($|\s)/.test(rest) ? 'יח' : null; if (!unit) return;
+    let id = null; for (const ex of pg.slice(i + 2, i + 5)) if (ex.includes('ת.ז')) { const im = /(\d{5,9})/.exec(ex); id = im ? im[1] : null; break; }
+    items.push({itemNo: mm[1], qty: q, rate, total, unit, type: unit === 'שעה' ? 'hours' : 'km',
+      desc: rest.replace(/^תיאור\s*:?\s*/, '').replace(/\s*(שעה|יח)\s*$/, '').trim(), consultantId: id});
+  });
+  // מועד אספקה לכל פריט (דף "פריטים / שירותים"): "30 תיאור: ... 15.02.2027"
+  const delivery = {};
+  for (const line of pages.flat()) { const m = /^(\d{2})\s(?:\d{2}\s)?תיאור:.*?(\d{2}\.\d{2}\.\d{4})\s*$/.exec(line); if (m) delivery[m[1]] = iso(m[2]); }
+  // פרוטוקולים / תקופות: "ע"פ הפרוטוקול מס' 01-26 מיום 5/1/26, נותנת השירות המאושרת הינה ... בהיקף 1800 ש"ע מתאריך 16/2/26 עד 15/2/27"
+  const anyDate = s => { const m = /(\d{1,2})[./](\d{1,2})[./](\d{2,4})/.exec(s || ''); if (!m) return null; let y = +m[3]; if (y < 100) y += 2000; return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`; };
+  const periods = [];
+  const pre = /הפרוטוקול\s+מס'?\s*([\d\-]+)\s+מיום\s*,?\s*([\d./]+)[\s\S]*?המאושר[ת]?\s+הינ[וה]\s+([\s\S]+?)\s+בהיקף\s+([\d,]+)\s*ש"ע\s+מתאריך\s*([\d./]+)\s+עד\s*(?:תאריך)?\s*\.?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})/g;
+  let pm; while ((pm = pre.exec(text))) periods.push({protocol: pm[1], protocolDate: anyDate(pm[2]), person: pm[3].replace(/\s+/g, ' ').trim(), hours: n(pm[4]), from: anyDate(pm[5]), to: anyDate(pm[6])});
+  periods.sort((a, b) => (a.from || '').localeCompare(b.from || ''));
+  for (const it of items) {
+    it.deliveryDate = delivery[it.itemNo] || null;
+    const per = periods.find(p => p.to && p.to === it.deliveryDate) || null;
+    it.from = per?.from || null; it.to = per?.to || it.deliveryDate; it.protocol = per?.protocol || null;
+  }
+  return {kind: 'order', file: fileName, number, numberFormatted: number ? `${number.slice(0, 3)}-${number.slice(3, 6)}-${number.slice(6)}` : null, version,
+    replacesPrevious: /מחליפה\s+הזמנה\s+קודמת/.test(text),
+    validFrom: iso(find(/תחילת\s+תוקף[^\d\n]*(\d{2}\.\d{2}\.\d{4})/)), validTo: iso(find(/סוף\s+תוקף[^\d\n]*(\d{2}\.\d{2}\.\d{4})/)),
+    released: iso(find(/הופק\s+במשהב"ט\s+בתאריך\s*(\d{2}\.\d{2}\.\d{4})/)), amountNoVat: n(find(/ללא\s+מע"מ\s*:?\s*([\d,]+\.\d{2})/)),
+    protocol: periods.length ? periods[periods.length - 1].protocol : find(/הפרוטוקול\s+מס'?\s*([\d\-]+)/), approvedPerson: approved,
+    periods, items, pages: doc.numPages};
+}
+
+/* ===================================================================== PDF identify + merge */
+async function pdfFirstPageText(buf) {
+  const doc = await pdfjsLib.getDocument({data: new Uint8Array(buf.slice(0))}).promise;
+  const tc = await (await doc.getPage(1)).getTextContent();
+  return {text: tc.items.map(i => i.str).join(' '), pages: doc.numPages};
+}
+function pdfKind(text) { const t = text.replace(/\s/g, ''); return /23\.030/.test(t) ? 'invoice' : /23\.031/.test(t) ? 'report' : 'unknown'; }
+const fmtAmount = v => Math.floor(Number(v) + 1e-9).toLocaleString('en-US');
+
+async function mergeInvoiceAndReport(invoiceBuf, reportBuf) {
+  const {PDFDocument} = PDFLib;
+  const inv = await PDFDocument.load(invoiceBuf), rep = await PDFDocument.load(reportBuf);
+  const out = await PDFDocument.create();
+  const [p0] = await out.copyPages(inv, [0]); out.addPage(p0);
+  for (const p of await out.copyPages(rep, rep.getPageIndices())) out.addPage(p);
+  return {bytes: await out.save(), invoicePages: inv.getPageCount(), reportPages: rep.getPageCount()};
+}
+
+/* ===================================================================== storage (IndexedDB) */
+const idb = {
+  db: null,
+  open() { return new Promise((ok, bad) => { try { const r = indexedDB.open('atlasmod', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => { this.db = r.result; ok(); }; r.onerror = () => bad(r.error); } catch (e) { bad(e); } }); },
+  get(k) { return new Promise((ok, bad) => { if (!this.db) return ok(undefined); const q = this.db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => ok(q.result); q.onerror = () => bad(q.error); }); },
+  set(k, v) { return new Promise((ok, bad) => { if (!this.db) return ok(); const tx = this.db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => ok(); tx.onerror = () => bad(tx.error); }); },
+  del(k) { return new Promise(ok => { if (!this.db) return ok(); const tx = this.db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete(k); tx.oncomplete = () => ok(); }); },
+};
+
+/* ===================================================================== state */
+const S = {module: 'mod', tab: 'report', ptab: 'pdash', projectId: null, engId: null, month: null, personId: null, db: {people: [], orders: [], reports: [], projects: [], engagements: [], bills: [], settings: {}}, root: null, rootPerm: 'none', scan: null, prep: null, idbOk: true};
+try { const s = JSON.parse(localStorage.getItem('atlasmod.ui') || '{}'); Object.assign(S, {module: s.module || 'mod', tab: s.tab || 'report', ptab: s.ptab || 'pdash', projectId: s.projectId || null, engId: s.engId || null, month: s.month || null, personId: s.personId || null}); } catch (e) {}
+if (!S.month) { const d = new Date(); d.setMonth(d.getMonth() - 1); S.month = d.toISOString().slice(0, 7); }
+function remember() { try { localStorage.setItem('atlasmod.ui', JSON.stringify({module: S.module, tab: S.tab, ptab: S.ptab, projectId: S.projectId, engId: S.engId, month: S.month, personId: S.personId})); } catch (e) {} }
+const people = () => S.db.people.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he'));
+const personById = id => S.db.people.find(p => p.id === id);
+const orderById = id => S.db.orders.find(o => o.id === id);
+const ordersOf = pid => S.db.orders.filter(o => o.personId === pid);
+const linesOf = (o, t) => (o?.lines || []).filter(l => !t || l.type === t).slice().sort((a, b) => (+a.itemNo || 0) - (+b.itemNo || 0));
+function lineInMonth(l, month) { if (!month) return true; const [a, b] = monthRange(month); return (!l.from || l.from <= b) && (!l.to || l.to >= a); }
+const linesForMonth = (o, month) => linesOf(o).filter(l => lineInMonth(l, month));
+function lineOf(o, t, month) { const ls = linesOf(o, t); const hit = ls.filter(l => lineInMonth(l, month)); return (hit.length ? hit[hit.length - 1] : ls[ls.length - 1]) || {}; }
+const lineLabel = l => `${l.type === 'hours' ? 'שעות' : 'ק״מ'}${l.itemNo ? ' · פריט ' + l.itemNo : ''}${l.to ? ` · עד ${dateHe(l.to)}` : ''}`;
+function repLinesOf(rep, o) {  // תאימות לשיוכים ישנים ללא פירוט פריטים
+  if (rep.lines?.length) return rep.lines;
+  return [{type: 'hours', itemNo: lineOf(o, 'hours', rep.month).itemNo, qty: rep.hours || 0}, {type: 'km', itemNo: lineOf(o, 'km', rep.month).itemNo, qty: rep.km || 0}];
+}
+const reportId = (pid, m, oid) => `${pid}_${m}_${oid}`;
+const reportFor = (pid, m) => S.db.reports.find(r => r.personId === pid && r.month === m);
+
+let saveTimer = null;
+async function saveDb() {
+  S.db.updatedAt = new Date().toISOString();
+  try { await idb.set('db', S.db); } catch (e) { toast('שמירה בדפדפן נכשלה: ' + e.message, true); }
+  clearTimeout(saveTimer); saveTimer = setTimeout(writeDataFile, 600);
+}
+async function writeDataFile() {
+  if (!S.root || S.rootPerm !== 'granted') return;
+  try { const fh = await S.root.getFileHandle(DATA_FILE, {create: true}); const w = await fh.createWritable(); await w.write(JSON.stringify({schema: 'atlas-mod', version: 1, ...S.db}, null, 1)); await w.close(); }
+  catch (e) { console.warn('data file', e); }
+}
+function upsert(list, rec, prefix) { if (!rec.id) rec.id = uid(prefix); rec.updatedAt = new Date().toISOString(); const i = S.db[list].findIndex(x => x.id === rec.id); if (i >= 0) S.db[list][i] = rec; else S.db[list].push(rec); return rec; }
+
+/* ===================================================================== folders (File System Access API) */
+const fsSupported = () => 'showDirectoryPicker' in window;
+async function checkPerm(h, ask) {
+  if (!h) return 'none';
+  if (!h.queryPermission) return 'granted';
+  let p = await h.queryPermission({mode: 'readwrite'});
+  if (p !== 'granted' && ask) p = await h.requestPermission({mode: 'readwrite'});
+  return p;
+}
+async function pickRoot() {
+  if (!fsSupported()) return toast('הדפדפן לא תומך בגישה לתיקיות. יש להשתמש ב-Chrome או Edge במחשב.', true);
+  try {
+    const h = await window.showDirectoryPicker({id: 'atlasmod-root', mode: 'readwrite'});
+    S.root = h; S.rootPerm = await checkPerm(h, true); await idb.set('root', h);
+    await maybeLoadDataFile(); renderChips(); render(); toast('תיקיית הבסיס נבחרה: ' + h.name);
+  } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
+}
+async function grantRoot() { S.rootPerm = await checkPerm(S.root, true); renderChips(); if (S.rootPerm === 'granted') { await maybeLoadDataFile(); S.scan = null; render(); } }
+function dbFrom(d) { const e = {people: [], orders: [], reports: [], projects: [], engagements: [], bills: [], settings: {}}; for (const k of Object.keys(e)) if (d && d[k] !== undefined) e[k] = d[k]; if (d?.updatedAt) e.updatedAt = d.updatedAt; return e; }
+function dbHasData(d) { return !!(d && ((d.people || []).length || (d.projects || []).length)); }
+async function maybeLoadDataFile() {
+  try {
+    const fh = await S.root.getFileHandle(DATA_FILE);
+    const data = JSON.parse(await (await fh.getFile()).text());
+    const mine = S.db.updatedAt || '', theirs = data.updatedAt || '';
+    if (!dbHasData(S.db) && dbHasData(data)) { S.db = dbFrom(data); await idb.set('db', S.db); toast(`נטענו הנתונים מהתיקייה (${(data.people || []).length} עובדים, ${(data.projects || []).length} פרויקטים)`); }
+    else if (theirs > mine && dbHasData(data) && confirm(`בתיקיית הבסיס יש קובץ נתונים חדש יותר (${theirs.slice(0, 16).replace('T', ' ')}). לטעון אותו במקום הנתונים בדפדפן?`)) { S.db = dbFrom(data); await idb.set('db', S.db); }
+  } catch (e) { if (e.name !== 'NotFoundError') console.warn(e); }
+}
+function rootReady() { return S.root && S.rootPerm === 'granted'; }
+async function dirAt(parts) { let d = S.root; for (const p of parts) d = await d.getDirectoryHandle(p); return d; }
+async function personDir(person) { if (!rootReady()) throw new Error('אין גישה לתיקיית הבסיס - לחץ "אשר גישה לתיקיות" למעלה.'); if (!person.folder?.length) throw new Error('לא הוגדרה תיקיית עובד בכרטיס העובד.'); try { return await dirAt(person.folder); } catch (e) { throw new Error('תיקיית העובד לא נמצאה: ' + folderText(person)); } }
+async function subDir(dir, name) { try { return await dir.getDirectoryHandle(name); } catch (e) { return null; } }
+async function listEntries(dir) { const out = []; for await (const [name, h] of dir.entries()) out.push({name, h, kind: h.kind}); return out.sort((a, b) => a.name.localeCompare(b.name, 'he')); }
+async function readFile(dir, name) { const fh = await dir.getFileHandle(name); return (await fh.getFile()).arrayBuffer(); }
+async function fileExists(dir, name) { try { await dir.getFileHandle(name); return true; } catch (e) { return false; } }
+async function writeFile(dir, name, data) { const fh = await dir.getFileHandle(name, {create: true}); const w = await fh.createWritable(); await w.write(data); await w.close(); }
+function folderText(p) { return p?.folder?.length ? [S.root?.name || '…', ...p.folder].join('\\') : ''; }
+async function pickPersonFolder(pid) {
+  if (!rootReady()) return toast('בחר קודם תיקיית בסיס ואשר גישה', true);
+  try {
+    const h = await window.showDirectoryPicker({id: 'atlasmod-person', startIn: S.root, mode: 'read'});
+    const rel = await S.root.resolve(h);
+    if (rel === null) return toast(`התיקייה "${h.name}" אינה בתוך תיקיית הבסיס (${S.root.name}). בחר תיקייה שנמצאת בתוכה.`, true);
+    const el = document.querySelector('#pf [data-k=folder]');
+    el.value = JSON.stringify(rel); document.querySelector('#folderShow').textContent = [S.root.name, ...rel].join('\\');
+    await showMonths(rel);
+  } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
+}
+async function showMonths(rel) {
+  const el = $('#folderCheck'); if (!el) return;
+  try { const d = await dirAt(rel); const ms = (await listEntries(d)).filter(x => x.kind === 'directory' && /^\d{2}-\d{4}$/.test(x.name)).map(x => x.name);
+    el.innerHTML = `<span style="color:var(--good)">✓ התיקייה נמצאה · תיקיות חודש: ${ms.length ? ms.join(', ') : 'אין עדיין'}</span>`; }
+  catch (e) { el.innerHTML = `<span style="color:var(--bad)">✗ התיקייה לא נמצאה</span>`; }
+}
+
+const GENERATED = /^(חשבון_|חשבון_ודיווח|בדיקת_המרה)|מאוחד|^~\$/;
+const REPORT_NAME = /דיווח[\s_]*שעות|שעות[\s_]*עבודה/;
+function reportCandidates(entries) {
+  const g = {};
+  for (const e of entries) {
+    if (e.kind !== 'file' || GENERATED.test(e.name)) continue;
+    const m = /^(.*)\.(pdf|xlsx|xls)$/i.exec(e.name); if (!m || !REPORT_NAME.test(e.name)) continue;
+    (g[m[1].trim()] = g[m[1].trim()] || {stem: m[1].trim()})[m[2].toLowerCase()] = e.name;
+  }
+  return Object.values(g);
+}
+function outputNames(month, n) { const f = folderName(month); return {xlsx: `חשבון_${f}_${n}.xlsx`, pdf: `חשבון_${f}_${n}.pdf`, merged: `חשבון_ודיווח_שעות_${f}_${n}.pdf`}; }
+
+/* ===================================================================== actions */
+function compareEmployee(p, e) {
+  const rows = [];
+  const add = (field, card, rep, ok) => rows.push({field, card, report: rep, status: card === null || card === undefined || card === '' ? 'missing' : ok ? 'ok' : 'diff'});
+  add('שם', p.name, e.name, samePerson(p.name, e.name));
+  add('ת.ז.', p.personalId, e.personalId, digits(p.personalId).replace(/^0+/, '') === digits(e.personalId).replace(/^0+/, ''));
+  add('תואר מקצועי', p.title, e.title, (p.title || '').trim() === (e.title || '').trim());
+  add('מועד קבלת התואר', p.degreeDate, e.degreeDate, p.degreeDate === e.degreeDate);
+  add('תעריף', p.rate, e.rate, Number(p.rate) === Number(e.rate));
+  return rows;
+}
+async function scanMonth(stem) {
+  const p = personById(S.personId); const steps = []; const out = {steps};
+  try {
+    const base = await personDir(p);
+    const mfName = folderName(S.month);
+    const mf = await subDir(base, mfName);
+    if (!mf) {
+      const all = (await listEntries(base)).filter(x => x.kind === 'directory').map(x => x.name);
+      const y = S.month.slice(0, 4), m = +S.month.slice(5, 7);
+      const re = new RegExp(`^0?${m}[\\s._\\-]+${y}$|^${y}[\\s._\\-]+0?${m}$`);
+      const hints = all.filter(n => re.test(n) && n !== mfName);
+      steps.push({ok: false, text: `תיקיית החודש ${mfName} לא קיימת. יש ליצור אותה ידנית בתוך תיקיית העובד.` + (hints.length ? ` נמצאו תיקיות בשם דומה: ${hints.join(', ')} — השם צריך להיות בדיוק ${mfName}.` : '')});
+      return out;
+    }
+    out.monthOk = true;
+    steps.push({ok: true, text: `תיקיית חודש נמצאה: ${mfName}`});
+    let c = reportCandidates(await listEntries(mf));
+    out.candidates = c;
+    if (stem) c = c.filter(x => x.stem === stem);
+    if (!c.length) { steps.push({ok: false, text: 'לא נמצא דוח שעות מקור בתיקייה (קובץ ששמו כולל "דיווח שעות" או "שעות עבודה").'}); return out; }
+    if (c.length > 1) { steps.push({ok: null, text: `נמצאו ${c.length} דוחות שעות אפשריים - יש לבחור אחד.`}); out.needChoice = true; return out; }
+    const r = c[0]; out.report = r;
+    steps.push({ok: true, text: `דוח שעות מקור נמצא: \u2066${r.stem}\u2069 (${['xlsx', 'pdf', 'xls'].filter(k => r[k]).map(k => k.toUpperCase()).join(' + ')})`});
+    if (r.xlsx) {
+      const d = parse23031(await readFile(mf, r.xlsx), r.xlsx);
+      out.parsed = d; out.compare = compareEmployee(p, d.employee);
+      const m = ordersOf(p.id).filter(o => digits(o.number) === digits(d.order.number)); out.orderMatch = m.length === 1 ? m[0].id : null;
+      if (d.month && d.month !== S.month) d.warnings.unshift(`התאריכים בדוח שייכים לחודש ${monthLabel(d.month)} ולא לחודש שנבחר (${monthLabel(S.month)}).`);
+      steps.push({ok: true, text: `הדוח נקרא: ${qty(d.hours.final)} שעות, ${d.km.uniqueDays} ימי עבודה, ${qty(d.km.final)} ק״מ`});
+    } else if (r.xls) steps.push({ok: false, text: 'הדוח שמור בפורמט XLS ישן. יש לשמור אותו ב-Excel כ-XLSX.'});
+    else steps.push({ok: null, text: 'הדוח קיים רק כ-PDF - יש להזין שעות וק״מ ידנית, או לשים גם את קובץ ה-Excel בתיקייה.'});
+    if (!r.pdf) steps.push({ok: null, text: 'אין PDF של דוח השעות. לפני האיחוד יש לשמור אותו גם כ-PDF (ב-Excel: קובץ ← שמירה בשם ← PDF).'});
+  } catch (e) { steps.push({ok: false, text: e.message}); }
+  return out;
+}
+async function prepareInvoice(opts) {
+  const p = personById(S.personId); const rep = reportFor(S.personId, S.month); const o = orderById(rep.orderId);
+  const n = Number(opts.invoiceNo); const steps = []; const out = {steps};
+  const base = await personDir(p);
+  const mf = await subDir(base, folderName(S.month));
+  if (!mf) { steps.push({ok: false, text: `תיקיית החודש ${folderName(S.month)} לא קיימת.`}); return out; }
+  steps.push({ok: true, text: 'תיקיית חודש נמצאה'});
+  let src, srcName, prev, isFirst;
+  if (n === 1) {
+    const tpl = await idb.get('tpl:' + o.id);
+    if (!tpl) { steps.push({ok: false, text: 'חשבון ראשון: יש להעלות תבנית טופס 23.030 להזמנה זו.'}); out.needTemplate = true; return out; }
+    src = tpl; srcName = o.templateName || 'תבנית'; prev = readInvoice(tpl, srcName); isFirst = true;
+    steps.push({ok: true, text: `חשבון ראשון - תבנית: \u2066${srcName}\u2069`});
+  } else {
+    const pm = shiftMonth(S.month, -1);
+    if (opts.previousFile) { src = opts.previousFile.buf; srcName = opts.previousFile.name; prev = readInvoice(src, srcName); steps.push({ok: true, text: `חשבון קודם (נבחר): \u2066${srcName}\u2069`}); }
+    else {
+      const pf = await subDir(base, folderName(pm));
+      if (!pf) { steps.push({ok: false, text: `תיקיית החודש הקודם ${folderName(pm)} לא קיימת.`}); return out; }
+      const found = [], rejected = [];
+      for (const e of await listEntries(pf)) {
+        if (e.kind !== 'file' || !/\.xlsx$/i.test(e.name) || e.name.startsWith('~$')) continue;
+        try {
+          const buf = await readFile(pf, e.name); const inv = readInvoice(buf, e.name); const why = [];
+          if (inv.orderDigits !== digits(o.number)) why.push('הזמנה ' + inv.orderDisplay);
+          if (inv.invoiceNo !== n - 1) why.push('חשבון מס׳ ' + inv.invoiceNo);
+          const hl = inv.lines.filter(l => l.kind === 'hours');
+          if (!hl.some(l => samePerson(l.name, p.name)) && hl.length !== 1) why.push('העובד לא נמצא בטופס');
+          if (why.length) rejected.push({file: e.name, reason: why.join(', ')}); else found.push({name: e.name, buf, inv});
+        } catch (err) { rejected.push({file: e.name, reason: err.message.slice(0, 90)}); }
+      }
+      out.rejected = rejected;
+      if (!found.length) { steps.push({ok: false, text: `לא נמצא חשבון מס׳ ${n - 1} של הזמנה ${o.number} בתיקייה ${folderName(pm)}.`}); out.allowPick = true; return out; }
+      let f = found;
+      if (f.length > 1) { const std = outputNames(pm, n - 1).xlsx; const pr = f.filter(x => x.name === std); if (pr.length === 1) f = pr; }
+      if (f.length > 1) { steps.push({ok: null, text: `נמצאו ${f.length} קבצים מתאימים - יש לבחור.`}); out.previousChoices = f.map(x => ({name: x.name, buf: x.buf})); return out; }
+      src = f[0].buf; srcName = f[0].name; prev = f[0].inv;
+      steps.push({ok: true, text: `חשבון קודם נמצא: \u2066${folderName(pm)}\\${srcName}\u2069`});
+    }
+    isFirst = false;
+    if (prev.orderDigits !== digits(o.number)) throw new Error('מספר ההזמנה בחשבון הקודם אינו תואם.');
+  }
+  const plan = planNextInvoice(prev, p.name, o, S.month, n, repLinesOf(rep, o), opts.dealNo || rep.dealInvoiceNo, opts.invoiceType, isFirst);
+  steps.push({ok: true, text: 'מצטברים חושבו'});
+  const names = outputNames(S.month, n);
+  const exists = {xlsx: await fileExists(mf, names.xlsx), pdf: await fileExists(mf, names.pdf), merged: await fileExists(mf, names.merged)};
+  Object.assign(out, {ready: true, plan, src, srcName, prev, isFirst, names, exists, invoiceNo: n, reportPdf: rep.reportPdf, reportXlsx: rep.reportXlsx});
+  return out;
+}
+
+/* ===================================================================== modal + form helpers */
+function modal(title, body, actions) { $('#modalRoot').innerHTML = `<div class="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal"><h2>${esc(title)}</h2>${body}<div class="actions">${actions}</div></div></div>`; }
+function closeModal() { $('#modalRoot').innerHTML = ''; }
+function formVals(root) {
+  const o = {};
+  root.querySelectorAll('[data-k]').forEach(el => {
+    let v = el.type === 'checkbox' ? el.checked : el.value.trim();
+    if (el.dataset.t === 'num') v = v === '' ? null : Number(String(v).replace(/,/g, ''));
+    if (el.dataset.t === 'json') v = v ? JSON.parse(v) : null;
+    o[el.dataset.k] = v;
+  });
+  return o;
+}
+function fld(k, label, v, opt = {}) {
+  const t = opt.type || 'text', cls = opt.wide ? 'wide' : '';
+  if (t === 'select') return `<label class="${cls}">${label}<select data-k="${k}">${opt.options.map(([val, txt]) => `<option value="${esc(val)}" ${String(val) === String(v ?? '') ? 'selected' : ''}>${esc(txt)}</option>`).join('')}</select></label>`;
+  if (t === 'checkbox') return `<label style="flex-direction:row;align-items:center;gap:6px;margin-top:18px;"><input type="checkbox" data-k="${k}" ${v !== false ? 'checked' : ''}> ${label}</label>`;
+  return `<label class="${cls}">${label}<input data-k="${k}" ${opt.num ? 'data-t="num"' : ''} type="${t === 'date' ? 'date' : 'text'}" value="${esc(v ?? '')}" class="${opt.num || opt.ltr ? 'num' : ''}" ${opt.ph ? `placeholder="${esc(opt.ph)}"` : ''}></label>`;
+}
+function pickFile(accept, cb) { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => i.files[0] && cb(i.files[0]); i.click(); }
+function stepsHtml(steps) { return `<ul class="steps">` + (steps || []).map(s => { const c = s.ok === true ? 'ok' : s.ok === false ? 'bad' : 'warn'; return `<li class="${c}"><span class="ic">${s.ok === true ? '✓' : s.ok === false ? '✗' : '!'}</span><span>${esc(s.text)}</span></li>`; }).join('') + `</ul>`; }
+function personSelect(id) { return `<select id="${id}" onchange="setPerson(this.value)"><option value="">— בחר עובד —</option>` + people().filter(p => p.active !== false).map(p => `<option value="${p.id}" ${p.id === S.personId ? 'selected' : ''}>${esc(p.name)}</option>`).join('') + `</select>`; }
+function monthNav() { return `<span class="monthNav"><button onclick="setMonth(-1)" title="חודש קודם">►</button><span>${monthLabel(S.month)}</span><button onclick="setMonth(1)" title="חודש הבא">◄</button></span>`; }
+function setMonth(k) { S.month = shiftMonth(S.month, k); S.scan = null; S.prep = null; remember(); render(); }
+function setPerson(v) { S.personId = v || null; S.scan = null; S.prep = null; remember(); render(); }
+function download(bytes, name, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], {type})); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+
+/* ===================================================================== render */
+const TABS = [['report', 'דיווח והכנת חיוב'], ['produce', 'הפקת חשבון'], ['summary', 'ריכוז חודשי'], ['people', 'עובדים'], ['orders', 'הזמנות'], ['tools', 'הגדרות וגיבוי']];
+function renderChips() {
+  let h = '';
+  if (!fsSupported()) h += `<span class="chip bad">✗ הדפדפן לא תומך בתיקיות - השתמש ב-Chrome / Edge</span>`;
+  else if (!S.root) h += `<button class="chip warn" onclick="pickRoot()">בחר תיקיית בסיס</button>`;
+  else if (S.rootPerm !== 'granted') h += `<button class="chip warn" onclick="grantRoot()">🔒 אשר גישה לתיקיות (${esc(S.root.name)})</button>`;
+  else h += `<span class="chip good">✓ תיקיית בסיס: ${esc(S.root.name)}</span>`;
+  h += S.module === 'proj' ? `<span class="chip">${S.db.projects.length} פרויקטים · ${S.db.engagements.length} מתכננים</span>` : `<span class="chip">${S.db.people.length} עובדים · ${S.db.orders.length} הזמנות</span>`;
+  if (!S.idbOk) h += `<span class="chip bad">הדפדפן חוסם שמירה מקומית</span>`;
+  $('#statusChips').innerHTML = h;
+}
+function setModule(m) { S.module = m; remember(); render(); }
+function render() {
+  renderChips();
+  const nAl = projAlerts().filter(a => a.level !== 'info').length;
+  const modSwitch = `<div class="modSwitch"><button class="${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">הגשת חשבונות משהב״ט</button><button class="${S.module === 'proj' ? 'on' : ''}" onclick="setModule('proj')">חשבונות מתכננים בפרויקטים${nAl ? ` <span class="badge">${nAl}</span>` : ''}</button></div>`;
+  if (S.module === 'proj') { $('#tabs').innerHTML = modSwitch + PTABS.map(([k, t]) => `<button class="${S.ptab === k ? 'active' : ''}" onclick="S.ptab='${k}';remember();render()">${t}</button>`).join(''); return renderProj($('#view')); }
+  $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => `<button class="${S.tab === k ? 'active' : ''}" onclick="S.tab='${k}';remember();render()">${t}</button>`).join('');
+  const v = $('#view');
+  if (fsSupported() && (!S.root || S.rootPerm !== 'granted') && !['people', 'orders', 'tools'].includes(S.tab)) {
+    v.innerHTML = rootGate(); return;
+  }
+  ({people: viewPeople, orders: viewOrders, report: viewReport, summary: viewSummary, produce: viewProduce, tools: viewTools})[S.tab](v);
+}
+function rootGate() {
+  if (!S.root) return `<div class="card"><h2>צעד ראשון: תיקיית בסיס</h2>
+    <p>בחר פעם אחת את התיקייה שבתוכה נמצאות תיקיות כל העובדים, למשל <code dir="ltr">D:\\אטלס\\אהו''ב</code>.<br>האתר יקרא וישמור קבצים רק בתוכה. שום קובץ לא נשלח לאינטרנט - הכל נעשה במחשב שלך.</p>
+    <button class="primary" onclick="pickRoot()">בחר תיקיית בסיס</button>
+    <p class="small muted">לא ניתן לבחור כונן שלם (כמו D:\\) - יש לבחור תיקייה בתוכו.</p></div>`;
+  return `<div class="card"><h2>🔒 נדרש אישור גישה</h2><p>הדפדפן מבקש אישור לגשת לתיקייה <b>${esc(S.root.name)}</b> (פעם אחת בכל פתיחה, או "אפשר תמיד" אם הדפדפן מציע).</p>
+    <button class="primary" onclick="grantRoot()">אשר גישה לתיקיות</button></div>`;
+}
+
+/* ---------------------------------------------------------------- people */
+function viewPeople(v) {
+  const rows = people().map(p => `<tr class="clickable" onclick="editPerson('${p.id}')"><td><b>${esc(p.name)}</b>${p.active === false ? ' <span class="pill">לא פעיל</span>' : ''}</td>
+    <td class="n">${esc(p.personalId)}</td><td>${esc(p.title)}</td><td class="n">${dateHe(p.degreeDate)}</td><td class="n">${p.rate ? money(p.rate) : ''}</td>
+    <td>${esc(p.role)}</td><td>${esc(p.classification)}</td><td>${esc(p.branch)}</td><td class="small">${p.folder?.length ? bdi(folderText(p)) : '<span class="pill missing">לא הוגדרה</span>'}</td><td>${ordersOf(p.id).length}</td></tr>`).join('');
+  v.innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">עובדים ויועצים</h2>
+    <div class="row"><button onclick="importPersonFromReport()">ייבוא מדוח שעות (23.031)</button><button class="primary" onclick="editPerson()">+ עובד חדש</button></div></div>
+    <p class="muted small" style="margin:8px 0 0">לכל עובד פרטים משלו בטופס: שם, ת״ז, תואר, מועד קבלת התואר ותעריף. "ייבוא מדוח שעות" ממלא אותם אוטומטית מדוח קיים של העובד.</p></div>
+  <div class="tableWrap"><table><thead><tr><th>שם (כפי שבטופס)</th><th>ת״ז</th><th>תואר מקצועי</th><th>מועד קבלת התואר</th><th>תעריף</th><th>תפקיד</th><th>סיווג</th><th>גוף דורש</th><th>תיקיית עובד</th><th>הזמנות</th></tr></thead>
+  <tbody>${rows || `<tr><td colspan="10" class="empty">אין עובדים עדיין. התחל ב"ייבוא מדוח שעות".</td></tr>`}</tbody></table></div>`;
+}
+function editPerson(id, prefill) {
+  const p = id ? {...personById(id)} : {active: true, ...(prefill || {})};
+  modal(id ? 'עריכת עובד' : 'עובד חדש', `<div class="form" id="pf">
+    ${fld('name', 'שם העובד (כפי שמופיע בדוח)', p.name)}${fld('fullName', 'שם מלא כפי שבהזמנה', p.fullName, {ph: 'סבר מרית אודליה'})}
+    ${fld('personalId', 'ת״ז / מספר אישי', p.personalId, {ltr: true})}${fld('title', 'התואר המקצועי', p.title)}
+    ${fld('degreeDate', 'מועד קבלת התואר', p.degreeDate, {type: 'date'})}${fld('rate', 'תעריף לשעה (₪)', p.rate, {num: true})}
+    ${fld('role', 'תפקיד', p.role, {ph: 'מתאמת תכנון'})}${fld('classification', 'סיווג העובד (בחשבון)', p.classification, {ph: "מתאם רמה ב'"})}
+    ${fld('branch', 'גוף דורש / ענף', p.branch, {ph: 'ענף דרום'})}${fld('dailyKm', 'ק״מ מאושר ליום', p.dailyKm, {num: true})}
+    ${fld('active', 'פעיל', p.active, {type: 'checkbox'})}
+    <label class="wide">תיקיית העובד (בתוכה תיקיות חודש בפורמט MM-YYYY)
+      <div class="row"><input type="hidden" data-k="folder" data-t="json" value="${esc(p.folder ? JSON.stringify(p.folder) : '')}">
+        <span id="folderShow" class="grow" dir="ltr" style="text-align:right;border:1px solid var(--line);border-radius:4px;padding:5px 8px;background:var(--head);min-height:30px">${esc(folderText(p) || '—')}</span>
+        <button type="button" class="small" onclick="pickPersonFolder()">בחר תיקייה…</button></div>
+      <span id="folderCheck" class="small"></span></label>
+    ${fld('notes', 'הערות', p.notes, {wide: true})}
+    <label class="wide">תבנית דוח שעות (טופס 23.031 של העובד - משמשת ליצירת דוח מקובץ נוכחות)
+      <div class="row">${p.reportTemplateName ? `<span class="pill ok">✓ ${bdi(p.reportTemplateName)}</span>` : '<span class="small muted">לא הועלתה (אפשר גם להשתמש בדוח של החודש הקודם)</span>'}
+        ${id ? `<button type="button" class="small" onclick="uploadReportTemplate('${id}')">${p.reportTemplateName ? 'החלף' : 'העלה תבנית'}</button>` : '<span class="small muted">(אחרי השמירה)</span>'}</div></label></div>`,
+    `<button class="primary" onclick="savePerson('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` +
+    (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteRec('people','${id}')">מחק עובד</button>` : ''));
+  if (p.folder?.length && rootReady()) showMonths(p.folder);
+}
+async function savePerson(id) {
+  const vals = formVals($('#pf')); if (!vals.name) return toast('חובה למלא שם עובד', true);
+  upsert('people', id ? {...personById(id), ...vals} : vals, 'person'); await saveDb(); closeModal(); toast('העובד נשמר'); render();
+}
+async function deleteRec(list, id) {
+  if (!confirm('למחוק? הקבצים בתיקיות לא נמחקים.')) return;
+  S.db[list] = S.db[list].filter(x => x.id !== id); await saveDb(); closeModal(); render();
+}
+function importPersonFromReport() {
+  pickFile('.xlsx', f => run(async () => {
+    const d = parse23031(await f.arrayBuffer(), f.name); const e = d.employee;
+    const ex = S.db.people.find(p => digits(p.personalId).replace(/^0+/, '') === digits(e.personalId).replace(/^0+/, ''));
+    if (ex) { toast(`העובד ${ex.name} כבר קיים - פותח לעריכה`); return editPerson(ex.id); }
+    editPerson(null, {name: e.name, personalId: e.personalId, title: e.title, degreeDate: e.degreeDate, rate: e.rate, branch: d.order.branch, dailyKm: d.km.perDay, active: true});
+    toast('הפרטים מולאו מהדוח - בחר תיקיית עובד ושמור');
+  }, 'קורא את הדוח…'));
+}
+
+/* ---------------------------------------------------------------- orders */
+function viewOrders(v) {
+  const rows = people().map(p => { const os = ordersOf(p.id); if (!os.length) return '';
+    return `<tr><td colspan="8" style="background:var(--head);font-weight:700">${esc(p.name)}</td></tr>` + os.map(o => {
+      const ls = linesOf(o); const periods = [...new Set(ls.map(l => l.to || ''))].length;
+      const sum = t => ls.filter(l => l.type === t).reduce((a, l) => a + (Number(l.budget) || 0), 0);
+      const cur = lineOf(o, 'hours', S.month);
+      return `<tr class="clickable" onclick="editOrder('${o.id}')"><td class="n"><b>${esc(o.number)}</b></td><td>${esc(o.version ?? '')}</td><td>${esc(o.branch)}</td><td class="n">${dateHe(o.validFrom)} – ${dateHe(o.validTo)}</td>
+        <td>${ls.length} שורות${periods > 1 ? ` · ${periods} תקופות` : ''}<div class="small muted">${ls.map(l => l.itemNo).filter(Boolean).join(', ')}</div></td>
+        <td class="n">${money(cur.rate)}</td><td class="n">${money(sum('hours'))}<div class="small muted">ק״מ: ${money(sum('km'))}</div></td>
+        <td>${o.templateName ? '<span class="pill ok">✓ תבנית</span>' : '<span class="pill missing">אין תבנית</span>'}</td></tr>`; }).join(''); }).join('');
+  v.innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">הזמנות עבודה</h2>
+    <div class="row"><button onclick="importOrderPdf()">ייבוא מ-PDF הזמנה</button><button class="primary" onclick="editOrder()">+ הזמנה חדשה</button></div></div>
+    <p class="muted small" style="margin:8px 0 0">"ייבוא מ-PDF" קורא את מסמך ההזמנה של משהב״ט, כולל כל השורות והתקופות. גרסה חדשה (הזמנת המשך) מעדכנת את ההזמנה הקיימת ומוסיפה את השורות החדשות; הגרסה הקודמת נשמרת בהיסטוריה.</p></div>
+  <div class="tableWrap"><table><thead><tr><th>מספר הזמנה</th><th>גרסה</th><th>גוף דורש</th><th>תוקף</th><th>שורות</th><th>תעריף שעה</th><th>תקציב שעות</th><th>תבנית 23.030</th></tr></thead>
+  <tbody>${rows || `<tr><td colspan="8" class="empty">אין הזמנות עדיין.</td></tr>`}</tbody></table></div>`;
+}
+function orderLineRow(l) {
+  const inp = (f, v, w, t) => `<input data-f="${f}" ${t === 'date' ? 'type="date"' : 'class="num"'} value="${esc(v ?? '')}" style="width:${w}px">`;
+  return `<tr data-line>${'<td>' + inp('itemNo', l.itemNo, 50) + '</td>'}
+    <td><select data-f="type"><option value="hours" ${l.type === 'hours' ? 'selected' : ''}>שעות</option><option value="km" ${l.type === 'km' ? 'selected' : ''}>ק״מ</option></select></td>
+    <td>${inp('from', l.from, 130, 'date')}</td><td>${inp('to', l.to, 130, 'date')}</td><td>${inp('rate', l.rate, 70)}</td><td>${inp('qty', l.qty, 80)}</td><td>${inp('budget', l.budget, 100)}</td>
+    <td>${inp('dailyKm', l.dailyKm, 60)}</td><td>${inp('monthlyHours', l.monthlyHours, 60)}</td><td><button class="small ghost" onclick="this.closest('tr').remove()">✕</button></td></tr>`;
+}
+function editOrder(id, prefill) {
+  const o = id ? JSON.parse(JSON.stringify(orderById(id))) : {personId: S.personId, lines: [{itemNo: '10', type: 'hours'}, {itemNo: '20', type: 'km', rate: 1.4}], ...(prefill || {})};
+  const hist = (o.versions || []).map(x => `<li>גרסה ${esc(x.version)} · ${dateHe(x.validFrom)}–${dateHe(x.validTo)} · ${linesOf(x).length} שורות (${linesOf(x).map(l => l.itemNo).filter(Boolean).join(', ')})</li>`).join('');
+  modal(id ? `הזמנה ${o.number}` : 'הזמנה חדשה', `<div class="form" id="of">
+    ${fld('personId', 'עובד', o.personId, {type: 'select', options: [['', '— בחר —'], ...people().map(p => [p.id, p.name])]})}
+    ${fld('number', 'מספר הזמנה', o.number, {ltr: true, ph: '444-142-9536'})}${fld('version', 'גרסה', o.version, {ltr: true})}
+    ${fld('branch', 'גוף דורש (כפי שבחשבון)', o.branch, {ph: "אהו''ב - ענף דרום"})}${fld('validFrom', 'תחילת תוקף', o.validFrom, {type: 'date'})}
+    ${fld('validTo', 'סוף תוקף', o.validTo, {type: 'date'})}${fld('protocol', "מס' החלטה / פרוטוקול", o.protocol, {ltr: true})}</div>
+    <h3>שורות ההזמנה (פריטים)</h3>
+    <div class="tableWrap"><table id="olines"><thead><tr><th>פריט</th><th>סוג</th><th>מתאריך</th><th>עד תאריך</th><th>תעריף</th><th>כמות מאושרת</th><th>תקציב (ללא מע״מ)</th><th>ק״מ ליום</th><th>שעות לחודש</th><th></th></tr></thead>
+      <tbody>${linesOf(o).map(orderLineRow).join('')}</tbody></table></div>
+    <div class="row" style="margin-top:6px"><button class="small" onclick="document.querySelector('#olines tbody').insertAdjacentHTML('beforeend', orderLineRow({type:'hours'}))">+ שורה</button>
+      <span class="small muted">כל שורה משויכת לתקופה (מתאריך–עד תאריך). בחודש מסוים נכנסות לחיוב רק השורות של אותה תקופה.</span></div>
+    <h3>תבנית לחשבון הראשון (טופס 23.030)</h3>
+    <div class="row">${o.templateName ? `<span class="pill ok">✓ ${bdi(o.templateName)}</span>` : '<span class="muted small">נדרשת רק לחשבון מס׳ 1. מחשבון 2 והלאה החשבון הקודם משמש בסיס.</span>'}
+      ${id ? `<button class="small" onclick="uploadTemplate('${id}')">${o.templateName ? 'החלף תבנית' : 'העלה תבנית'}</button>` : '<span class="muted small">(אפשר להעלות אחרי השמירה)</span>'}</div>
+    ${hist ? `<details><summary>היסטוריית גרסאות (${o.versions.length})</summary><ul class="small">${hist}</ul></details>` : ''}`,
+    `<button class="primary" onclick="saveOrder('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` +
+    (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteRec('orders','${id}')">מחק הזמנה</button>` : ''));
+  window.__orderPrefill = prefill || null;
+}
+function readOrderLines() {
+  const numF = ['rate', 'qty', 'budget', 'dailyKm', 'monthlyHours'];
+  return [...document.querySelectorAll('#olines tr[data-line]')].map(tr => {
+    const l = {}; tr.querySelectorAll('[data-f]').forEach(el => { const v = el.value.trim(); l[el.dataset.f] = numF.includes(el.dataset.f) ? (v === '' ? null : Number(v.replace(/,/g, ''))) : (v || null); });
+    l.label = l.type === 'km' ? 'הוצאות רכב' : 'שעות עבודה'; return l;
+  }).filter(l => l.rate !== null || l.budget !== null || l.itemNo);
+}
+async function saveOrder(id) {
+  const base = formVals($('#of')); if (!base.personId || !base.number) return toast('חובה לבחור עובד ולמלא מספר הזמנה', true);
+  const lines = readOrderLines(); if (!lines.length) return toast('חובה לפחות שורה אחת בהזמנה', true);
+  const extra = !id && window.__orderPrefill ? {sourcePdf: window.__orderPrefill.sourcePdf, periods: window.__orderPrefill.periods} : {};
+  const rec = {...(id ? orderById(id) : {}), ...extra, ...base, lines};
+  upsert('orders', rec, 'order'); await saveDb(); closeModal(); toast('ההזמנה נשמרה'); render();
+}
+function uploadTemplate(orderId) {
+  pickFile('.xlsx', f => run(async () => {
+    const o = orderById(orderId); const buf = await f.arrayBuffer(); const inv = readInvoice(buf, f.name);
+    if (inv.orderDigits && digits(o.number) && inv.orderDigits !== digits(o.number)) throw new Error(`מספר ההזמנה בתבנית (${inv.orderDisplay}) שונה מההזמנה (${o.number}).`);
+    await idb.set('tpl:' + orderId, buf); o.templateName = f.name; upsert('orders', o); await saveDb();
+    toast(`התבנית נשמרה (${inv.orderDisplay}, ${inv.lines.length} שורות חיוב)`); editOrder(orderId);
+  }, 'בודק את התבנית…'));
+}
+function importOrderPdf() {
+  pickFile('.pdf', f => run(async () => {
+    const r = await parseOrderPdf(await f.arrayBuffer(), f.name);
+    if (!r.number) throw new Error('לא זוהה מסמך הזמנה של משהב״ט');
+    if (!r.items.length) throw new Error('לא נמצאו שורות שירות בהזמנה.');
+    const idOf = r.items.find(i => i.consultantId && i.type === 'hours')?.consultantId;
+    const who = S.db.people.find(p => idOf && digits(p.personalId).replace(/^0+/, '') === idOf.replace(/^0+/, '')) || S.db.people.find(p => r.approvedPerson && samePerson(p.name, r.approvedPerson));
+    const ex = S.db.orders.find(o => digits(o.number) === r.number);
+    const carry = (it, t) => {  // שומרים ק"מ ליום / שעות לחודש שהוגדרו ידנית בגרסה הקודמת
+      const same = ex && linesOf(ex).find(l => String(l.itemNo) === String(it.itemNo)); const typeLast = ex && linesOf(ex, t).slice(-1)[0];
+      return {dailyKm: t === 'km' ? (same?.dailyKm ?? typeLast?.dailyKm ?? who?.dailyKm ?? null) : null, monthlyHours: t === 'hours' ? (same?.monthlyHours ?? typeLast?.monthlyHours ?? null) : null};
+    };
+    const lines = r.items.map(it => ({itemNo: it.itemNo, type: it.type, label: it.type === 'km' ? 'הוצאות רכב' : 'שעות עבודה', rate: it.rate, qty: it.qty, budget: it.total,
+      from: it.from, to: it.to, protocol: it.protocol, ...carry(it, it.type)}));
+    const fields = {number: r.numberFormatted, version: r.version, validFrom: r.validFrom, validTo: r.validTo, protocol: r.protocol, sourcePdf: r.file, periods: r.periods, lines};
+    const perTxt = r.periods.length > 1 ? ` · ${r.periods.length} תקופות: ` + r.periods.map(p => `${dateHe(p.from)}–${dateHe(p.to)}`).join(', ') : '';
+    if (ex) {
+      if (String(ex.version) === String(r.version)) { toast(`הזמנה ${r.numberFormatted} גרסה ${r.version} כבר קיימת`); return editOrder(ex.id); }
+      const oldNos = linesOf(ex).map(l => String(l.itemNo || '')); const added = lines.filter(l => !oldNos.includes(String(l.itemNo)));
+      const msg = `הזמנה ${r.numberFormatted} קיימת במערכת (גרסה ${ex.version || 0}, ${linesOf(ex).length} שורות).\n\nגרסה ${r.version}${r.replacesPrevious ? ' (מחליפה את הקודמת)' : ''}: ${lines.length} שורות, תוקף עד ${dateHe(r.validTo)}` +
+        (added.length ? `\nשורות חדשות: ${added.map(l => `${l.itemNo} (${l.type === 'hours' ? 'שעות' : 'ק״מ'}, ${dateHe(l.from)}–${dateHe(l.to)}, ₪${num(l.budget, 0)})`).join(', ')}` : '') +
+        `\n\nלעדכן את ההזמנה? הגרסה הקודמת תישמר בהיסטוריה.`;
+      if (!confirm(msg)) return;
+      const snap = {...ex, archivedAt: new Date().toISOString()}; delete snap.versions;
+      upsert('orders', {...ex, ...fields, personId: ex.personId, branch: ex.branch || who?.branch || '', versions: [...(ex.versions || []), snap]}); await saveDb();
+      toast(`ההזמנה עודכנה לגרסה ${r.version}` + (added.length ? ` - נוספו שורות ${added.map(l => l.itemNo).join(', ')}` : '') + perTxt); return editOrder(ex.id);
+    }
+    editOrder(null, {personId: who?.id || '', branch: who?.branch || '', ...fields});
+    toast(`נקראו ${lines.length} שורות מההזמנה${perTxt}. ` + (who ? `זוהה העובד: ${who.name}` : `לא נמצא עובד תואם (${r.approvedPerson || '?'}) - בחר עובד`));
+  }, 'קורא את ההזמנה…'));
+}
+
+/* ---------------------------------------------------------------- report */
+function viewReport(v) {
+  const p = personById(S.personId);
+  v.innerHTML = `<div class="card"><div class="row"><b>עובד:</b> ${personSelect('selP')} <b style="margin-inline-start:10px">חודש:</b> ${monthNav()}
+    <button class="primary" ${p ? '' : 'disabled'} onclick="doScan()">פתח מתיקיית החודש</button>
+    ${p ? `<span class="muted small">${bdi(folderText(p) + '\\' + folderName(S.month))}</span>` : ''}</div></div>
+  <div id="scanOut">${p ? scanHtml() : `<div class="card empty">בחר עובד וחודש. ${!S.db.people.length ? 'קודם יש להגדיר עובדים בלשונית "עובדים".' : ''}</div>`}</div>`;
+  if (p && !S.scan) doScan(null, true);
+}
+async function doScan(stem, quiet) {
+  if (!S.personId) return;
+  const r = quiet ? await scanMonth(stem) : await run(() => scanMonth(stem), 'מחפש בתיקיית החודש…');
+  if (!r) return; S.scan = r; const el = $('#scanOut'); if (el) { el.innerHTML = scanHtml(); renderAssignLines(); }
+}
+function scanHtml() {
+  const r = S.scan; if (!r) return `<div class="card muted">טוען…</div>`;
+  let h = `<div class="card"><h2>סטטוס</h2>${stepsHtml(r.steps)}`;
+  if (r.needChoice) h += `<div class="row">` + r.candidates.map(c => `<button onclick='doScan(${JSON.stringify(c.stem)})'>${bdi(c.stem)}</button>`).join('') + `</div>`;
+  if (r.monthOk) h += `<div class="row" style="margin:8px 0"><button onclick="openAttendance()">⏱ צור דוח שעות מקובץ נוכחות (אפליקציה)</button><span class="small muted">ממלא טופס 23.031 מתוך דו״ח הנוכחות ושומר אותו בתיקיית החודש</span></div>`;
+  if (r.monthOk && !r.report) h += `<div class="drop" onclick="pickFile('.xlsx,.pdf', uploadToMonth)" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="event.preventDefault();this.classList.remove('over');event.dataTransfer.files[0]&&uploadToMonth(event.dataTransfer.files[0])">גרור לכאן את דוח השעות (Excel / PDF) או לחץ לבחירה · הקובץ יישמר בתיקיית החודש</div>`;
+  h += `</div>`;
+  const saved = reportFor(S.personId, S.month);
+  if (r.parsed) h += parsedHtml(r.parsed, r.compare);
+  if (r.report) h += assignHtml(r, saved);
+  return h;
+}
+async function uploadToMonth(f) {
+  if (!REPORT_NAME.test(f.name) && !confirm(`שם הקובץ "${f.name}" לא כולל "דיווח שעות" / "שעות עבודה" ולכן לא יזוהה אוטומטית. להמשיך?`)) return;
+  await run(async () => {
+    const mf = await subDir(await personDir(personById(S.personId)), folderName(S.month));
+    if (await fileExists(mf, f.name) && !confirm(`הקובץ ${f.name} כבר קיים בתיקיית החודש. להחליף אותו?`)) return;
+    await writeFile(mf, f.name, await f.arrayBuffer()); toast('הקובץ נשמר בתיקיית החודש');
+  });
+  doScan();
+}
+function uploadReportTemplate(pid) {
+  pickFile('.xlsx', f => run(async () => {
+    const buf = await f.arrayBuffer(); const sh = templateSheets23031(buf);
+    if (!sh.length) throw new Error('בקובץ לא נמצא טופס 23.031.');
+    await idb.set('rtpl:' + pid, buf); const p = personById(pid); p.reportTemplateName = f.name; upsert('people', p); await saveDb();
+    toast(`התבנית נשמרה (${sh.length} גיליונות: ${sh.map(x => x.order || x.name).join(', ')})`); editPerson(pid);
+  }, 'בודק את התבנית…'));
+}
+/* ---------- יצירת דוח שעות (23.031) מקובץ נוכחות של אפליקציה */
+const ATT = {};
+async function openAttendance() {
+  pickFile('.xlsx,.xls', f => run(async () => {
+    const att = parseAttendance(await f.arrayBuffer(), f.name);
+    if (!att.rows.length) throw new Error('לא נמצאו רשומות כניסה/יציאה בקובץ.');
+    if (att.month !== S.month) throw new Error(`הקובץ הוא לחודש ${att.months.map(monthLabel).join(', ')} והחודש שנבחר הוא ${monthLabel(S.month)}.`);
+    const p = personById(S.personId);
+    Object.assign(ATT, {att, tplBuf: null, tplName: null, sheets: [], sel: new Set(att.rows.map((x, i) => i).filter(i => !att.rows[i].issues.length)), desc: att.rows.map(x => x.desc)});
+    // תבנית: של העובד, אחרת הדוח של החודש הקודם
+    const stored = await idb.get('rtpl:' + p.id);
+    if (stored) { ATT.tplBuf = stored; ATT.tplName = p.reportTemplateName + ' (תבנית העובד)'; }
+    else { try { const pm = await subDir(await personDir(p), folderName(shiftMonth(S.month, -1))); const c = pm && reportCandidates(await listEntries(pm)).find(x => x.xlsx);
+      if (c) { ATT.tplBuf = await readFile(pm, c.xlsx); ATT.tplName = `${c.xlsx} (החודש הקודם)`; } } catch (e) {} }
+    if (ATT.tplBuf) setAttTemplate(ATT.tplBuf, ATT.tplName); else attModal();
+  }, 'קורא את קובץ הנוכחות…'));
+}
+function setAttTemplate(buf, name) {
+  ATT.tplBuf = buf; ATT.tplName = name; ATT.sheets = templateSheets23031(buf);
+  if (!ATT.sheets.length) { ATT.tplBuf = null; toast('בקובץ התבנית לא נמצא טופס 23.031', true); return attModal(); }
+  const [m1, m2] = monthRange(S.month); const myOrders = ordersOf(S.personId).map(o => digits(o.number));
+  const valid = ATT.sheets.filter(x => (!x.validFrom || x.validFrom <= m2) && (!x.validTo || x.validTo >= m1));
+  const best = valid.filter(x => myOrders.includes(digits(x.order)));
+  ATT.sheet = (best.length === 1 ? best[0] : valid.length === 1 ? valid[0] : ATT.sheets.find(x => !x.hidden) || ATT.sheets[0]).name;
+  const sh = ATT.sheets.find(x => x.name === ATT.sheet); const o = ordersOf(S.personId).find(x => digits(x.number) === digits(sh.order));
+  ATT.kmPerDay = sh.kmPerDay ?? lineOf(o, 'km', S.month).dailyKm ?? personById(S.personId).dailyKm ?? '';
+  attModal();
+}
+function pickAttTemplate() { pickFile('.xlsx', async f => { const buf = await f.arrayBuffer(); setAttTemplate(buf, f.name);
+  if (ATT.sheets.length && confirm('לשמור את הקובץ כתבנית דוח השעות של העובד לחודשים הבאים?')) { await idb.set('rtpl:' + S.personId, buf); const p = personById(S.personId); p.reportTemplateName = f.name; upsert('people', p); await saveDb(); } }); }
+function attTotals() {
+  const rows = ATT.att.rows.filter((x, i) => ATT.sel.has(i));
+  const mins = rows.reduce((a, x) => a + (x.minutes || 0), 0), days = new Set(rows.map(x => x.date)).size;
+  return {rows, hours: r2(mins / 60), mins, days, km: days * (Number(ATT.kmPerDay) || 0)};
+}
+function attModal() {
+  const a = ATT.att, sh = ATT.sheets.find(x => x.name === ATT.sheet);
+  const dayName = d => ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'][new Date(d + 'T12:00:00').getDay()];
+  const t = (m) => m === null || m === undefined ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+  const [mm1, mm2] = monthRange(S.month);
+  const rows = a.rows.map((x, i) => `<tr id="attRow${i}" class="${x.issues.length ? 'dup' : ''}"><td><input id="attChk${i}" type="checkbox" ${ATT.sel.has(i) ? 'checked' : ''} ${x.issues.length ? 'disabled' : ''} onchange="ATT.sel[this.checked ? 'add' : 'delete'](${i}); attFooter()"></td>
+    <td class="n">${x.manual ? `<input type="date" value="${x.date}" min="${mm1}" max="${mm2}" onchange="attDate(${i}, this.value)" style="width:130px">` : dateHe(x.date)}</td><td id="attDay${i}">${dayName(x.date)}</td>
+    <td><input class="num attT" data-f="start" value="${t(x.start)}" placeholder="שש:דד" maxlength="5" onchange="attTime(${i}, 'start', this)" style="width:64px;${x.start === null ? 'border-color:var(--bad);background:var(--bad-bg)' : ''}"></td>
+    <td><input class="num attT" data-f="end" value="${t(x.end)}" placeholder="שש:דד" maxlength="5" onchange="attTime(${i}, 'end', this)" style="width:64px;${x.end === null ? 'border-color:var(--bad);background:var(--bad-bg)' : ''}"></td>
+    <td class="n" id="attTot${i}">${x.minutes !== null ? hhmm(x.minutes / 60) : ''}</td>
+    <td><input value="${esc(ATT.desc[i])}" style="width:100%;min-width:200px" oninput="ATT.desc[${i}] = this.value"></td><td class="small" id="attIss${i}">${attIssueHtml(x)}</td></tr>`).join('');
+  modal(`דוח שעות מקובץ נוכחות · ${monthLabel(S.month)}`, `
+    <div class="small muted">קובץ נוכחות: ${bdi(a.file)} · ${a.rows.length} רשומות</div>
+    <div class="form" style="margin-top:10px">
+      <label class="wide">תבנית טופס 23.031<div class="row"><span class="grow">${ATT.tplName ? bdi(ATT.tplName) : '<span style="color:var(--bad)">לא נבחרה תבנית</span>'}</span><button class="small" onclick="pickAttTemplate()">בחר קובץ תבנית…</button></div></label>
+      ${ATT.sheets.length ? `<label class="wide">גיליון / הזמנה<select onchange="ATT.sheet=this.value; attModal()">${ATT.sheets.map(x => `<option value="${esc(x.name)}" ${x.name === ATT.sheet ? 'selected' : ''}>${esc(x.order || '?')} · ${dateHe(x.validFrom)}–${dateHe(x.validTo)} · ₪${esc(x.rate)} · ${qty(x.monthlyHours)} ש׳ לחודש${x.hidden ? ' (מוסתר)' : ''}</option>`).join('')}</select></label>` : ''}
+      <label>ק״מ מאושר ליום<input class="num" value="${esc(ATT.kmPerDay ?? '')}" oninput="ATT.kmPerDay=this.value; attFooter()"></label>
+      <label>מס׳ חשבונית עסקה<input id="attDeal" class="num" placeholder="${esc(sh?.dealNo ? 'בחודש הקודם: ' + sh.dealNo : '')}"></label>
+      <label>תאריך חתימה<input id="attSign" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
+    ${sh && (sh.validFrom > monthRange(S.month)[1] || (sh.validTo && sh.validTo < monthRange(S.month)[0])) ? `<div class="alert bad">⚠ ההזמנה בגיליון הזה (${esc(sh.order)}) אינה בתוקף בחודש ${monthLabel(S.month)}.</div>` : ''}
+    <h3>בחר את הרשומות ששייכות להזמנה ${esc(sh?.order || '')}</h3>
+    <div class="row small" style="margin-bottom:6px"><a href="#" onclick="ATT.att.rows.forEach((x,i)=>!x.issues.length&&ATT.sel.add(i)); attModal(); return false">סמן הכל</a> · <a href="#" onclick="ATT.sel.clear(); attModal(); return false">נקה הכל</a> · <a href="#" onclick="attAddRow(); return false">+ הוסף רשומה ידנית</a> · <span class="muted">שעות הכניסה והיציאה והתיאור ניתנים לעריכה; רשומה שחסרה בה שעה תיפתח לסימון אחרי שתשלים אותה</span></div>
+    <div class="tableWrap" style="max-height:48vh"><table><thead><tr><th></th><th>תאריך</th><th>יום</th><th>כניסה</th><th>יציאה</th><th>סה״כ</th><th>תיאור</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div id="attFoot"></div>`,
+    `<button class="primary" ${ATT.tplBuf ? '' : 'disabled'} onclick="attBuild()">צור דוח שעות</button><button class="ghost" onclick="closeModal()">ביטול</button>`);
+  attFooter();
+}
+function attIssueHtml(x) {
+  const tags = [];
+  if (x.issues.length) tags.push(`<span style="color:var(--bad)">${esc(x.issues.join('; '))}</span>`);
+  if (x.edited) tags.push(`<span class="pill missing" title="במקור: ${esc(x.orig || '')}">✎ תוקן ידנית</span>`);
+  if (x.manual) tags.push('<span class="pill missing">✎ נוספה ידנית</span>');
+  return tags.join(' ');
+}
+function attRecalc(i) {
+  const x = ATT.att.rows[i];
+  x.issues = []; x.minutes = null;
+  if (x.start === null || x.end === null) x.issues.push('חסרה כניסה או יציאה');
+  else if (x.end <= x.start) x.issues.push('יציאה לפני כניסה');
+  else x.minutes = x.end - x.start;
+  const chk = $('#attChk' + i); if (!chk) return;
+  if (x.issues.length) { chk.disabled = true; chk.checked = false; ATT.sel.delete(i); }
+  else { if (chk.disabled) { chk.disabled = false; chk.checked = true; ATT.sel.add(i); } }
+  $('#attRow' + i).className = x.issues.length ? 'dup' : '';
+  $('#attTot' + i).textContent = x.minutes !== null ? hhmm(x.minutes / 60) : '';
+  $('#attIss' + i).innerHTML = attIssueHtml(x);
+  attFooter();
+}
+function attTime(i, field, el) {
+  const x = ATT.att.rows[i]; let val = el.value.trim().replace(/[.,;]/g, ':');
+  if (/^\d{3,4}$/.test(val)) val = val.padStart(4, '0').replace(/^(\d\d)(\d\d)$/, '$1:$2');   // 1745 -> 17:45
+  const m = val ? toMinutes(val) : null;
+  if (val && (m === null || m >= 1440)) { toast('שעה לא תקינה - יש להקליד בפורמט 17:45', true); el.value = ''; el.focus(); return; }
+  if (m !== null) el.value = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  el.style.borderColor = m === null ? 'var(--bad)' : ''; el.style.background = m === null ? 'var(--bad-bg)' : '';
+  if (!x.edited && !x.manual) { const t = m => m === null ? '—' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`; x.orig = `${t(x.start)}–${t(x.end)}`; x.edited = true; }
+  x[field] = m;
+  attRecalc(i);
+}
+function attDate(i, val) {
+  const [m1, m2] = monthRange(S.month);
+  if (!val || val < m1 || val > m2) { toast(`התאריך חייב להיות בחודש ${monthLabel(S.month)}`, true); return attModal(); }
+  ATT.att.rows[i].date = val; $('#attDay' + i).textContent = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'][new Date(val + 'T12:00:00').getDay()]; attFooter();
+}
+function attAddRow() {
+  const last = ATT.att.rows[ATT.att.rows.length - 1];
+  ATT.att.rows.push({date: last ? last.date : S.month + '-01', start: null, end: null, minutes: null, note: '', task: '', desc: '', issues: ['חסרה כניסה או יציאה'], manual: true});
+  ATT.desc.push('');
+  attModal();
+  const w = document.querySelector('.modal .tableWrap'); if (w) w.scrollTop = w.scrollHeight;
+}
+function attFooter() {
+  const el = $('#attFoot'); if (!el) return; const T = attTotals(), sh = ATT.sheets.find(x => x.name === ATT.sheet);
+  const over = sh?.monthlyHours && T.hours > sh.monthlyHours;
+  el.innerHTML = `<div class="stats"><div class="stat ${over ? 'warn' : 'good'}"><div class="label">שעות שנבחרו</div><div class="value">${qty(T.hours)}</div><div class="small muted">${hhmm(T.hours)} ש׳ · ${T.rows.length} רשומות</div></div>
+    <div class="stat"><div class="label">מאושר לחודש בהזמנה</div><div class="value">${sh?.monthlyHours ? qty(sh.monthlyHours) : '—'}</div></div>
+    <div class="stat"><div class="label">ימי עבודה ייחודיים</div><div class="value">${T.days}</div></div>
+    <div class="stat"><div class="label">ק״מ (ימים × מכסה)</div><div class="value">${qty(T.km)}</div></div></div>
+    ${over ? `<div class="alert warn">⚠ נבחרו ${qty(T.hours)} שעות - יותר מ-${qty(sh.monthlyHours)} השעות המאושרות לחודש בהזמנה. בחר רק את הרשומות ששייכות להזמנה הזו.</div>` : ''}`;
+}
+async function attBuild() {
+  const T = attTotals(); if (!T.rows.length) return toast('לא נבחרו רשומות', true);
+  const entries = ATT.att.rows.map((x, i) => ({...x, desc: ATT.desc[i]})).filter((x, i) => ATT.sel.has(i)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  if (entries.some(e => !e.desc)) { if (!confirm('יש רשומות ללא תיאור - הטופס יסמן "לא תקין" בבדיקת התיאורים. להמשיך?')) return; }
+  const p = personById(S.personId); const first = (p.name || '').trim().split(/\s+/)[0] || 'עובד';
+  const name = `דיווח שעות עבודה ${first}- ${S.month.slice(5, 7)}.${S.month.slice(0, 4)}.xlsx`;
+  await run(async () => {
+    const res = await build23031(ATT.tplBuf, ATT.sheet, entries, {dealNo: $('#attDeal').value.trim(), kmPerDay: ATT.kmPerDay === '' ? null : Number(ATT.kmPerDay), kmTotal: T.km, signDate: $('#attSign').value || null});
+    const mf = await subDir(await personDir(p), folderName(S.month));
+    if (await fileExists(mf, name) && !confirm(`${name} כבר קיים בתיקיית החודש. להחליף אותו?`)) return;
+    await writeFile(mf, name, res.bytes);
+    closeModal(); S.scan = null; await doScan(null, true);
+    toast(`נוצר ${name}: ${entries.length} רשומות, ${qty(T.hours)} שעות, ${T.days} ימים`);
+    if (res.notes.length) setTimeout(() => toast(res.notes.join(' · ')), 3200);
+  }, 'ממלא את טופס 23.031…');
+}
+
+function parsedHtml(d, compare) {
+  const cmp = compare.map(c => { const dt = c.field.includes('מועד'); return `<tr><td>${esc(c.field)}</td><td>${esc(dt ? dateHe(c.card) : c.card ?? '—')}</td><td>${esc(dt ? dateHe(c.report) : c.report ?? '—')}</td>
+    <td><span class="pill ${c.status}">${c.status === 'ok' ? '✓ תואם' : c.status === 'diff' ? '✗ שונה' : 'חסר בכרטיס'}</span></td></tr>`; }).join('');
+  const rows = d.rows.map(x => `<tr class="${x.sameDay > 1 ? 'dup' : ''}"><td class="n">${dateHe(x.date)}</td><td class="n">${x.start || ''}</td><td class="n">${x.end || ''}</td><td class="n">${x.brk ? hhmm(x.brk) : ''}</td>
+    <td class="n">${hhmm(x.hours)}</td><td class="n">${qty(x.hours)}</td><td class="small">${esc(x.desc || '')}</td><td>${x.sameDay > 1 ? '<span class="pill missing">אותו יום</span>' : ''}${x.issues.length ? '<span class="pill diff">' + esc(x.issues.join('; ')) + '</span>' : ''}</td></tr>`).join('');
+  const o = d.order, kmDiff = d.km.formTotal !== null && d.km.formTotal !== d.km.final;
+  return `<div class="card"><div class="row spread"><h2 style="margin:0">דוח שעות: ${bdi(d.file)}</h2><span class="muted small">${esc(d.formTitle || '')}</span></div>
+    <div class="stats">
+      <div class="stat good"><div class="label">שעות לחיוב</div><div class="value">${qty(d.hours.final)}</div><div class="small muted">${hhmm(d.hours.final)} ש׳</div></div>
+      <div class="stat"><div class="label">ימי עבודה ייחודיים</div><div class="value">${d.km.uniqueDays}</div><div class="small muted">${d.km.rowsWithHours} שורות דיווח</div></div>
+      <div class="stat"><div class="label">ק״מ מאושר ליום</div><div class="value">${qty(d.km.perDay)}</div></div>
+      <div class="stat ${kmDiff ? 'warn' : 'good'}"><div class="label">ק״מ לחיוב</div><div class="value">${qty(d.km.final)}</div><div class="small muted">${d.km.uniqueDays} × ${qty(d.km.perDay)}${kmDiff ? ` · בטופס: ${qty(d.km.formTotal)}` : ''}</div></div>
+      <div class="stat"><div class="label">מס׳ חשבונית עסקה</div><div class="value">${esc(o.dealInvoiceNo || '—')}</div></div></div>
+    ${d.warnings.map(w => `<div class="alert warn">⚠ ${esc(w)}</div>`).join('')}${d.notes.map(w => `<div class="alert info">${esc(w)}</div>`).join('')}
+    <div class="small muted">מקור השעות: ${esc(d.hours.source)} · אימות משורות הדיווח: ${qty(d.hours.computed)}</div>
+    <div class="grid2" style="margin-top:12px">
+      <div><h3>פרטי העובד: דוח מול כרטיס העובד</h3><div class="tableWrap"><table><thead><tr><th>שדה</th><th>בכרטיס</th><th>בדוח</th><th></th></tr></thead><tbody>${cmp}</tbody></table></div>
+        ${compare.some(c => c.status === 'missing') ? `<button class="small" style="margin-top:6px" onclick="fillPersonFromReport()">השלם שדות חסרים בכרטיס מהדוח</button>` : ''}</div>
+      <div><h3>פרטי ההזמנה בדוח</h3><table><tbody>
+        <tr><td class="muted">מספר הזמנה</td><td class="n"><b>${esc(o.number)}</b> ${esc(o.amendment || '')}</td></tr><tr><td class="muted">גוף דורש</td><td>${esc(o.branch)}</td></tr>
+        <tr><td class="muted">תוקף</td><td class="n">${dateHe(o.validFrom)} – ${dateHe(o.validTo)}</td></tr><tr><td class="muted">שעות מאושרות לחודש</td><td class="n">${qty(o.monthlyApprovedHours)}</td></tr>
+        <tr><td class="muted">ש״ע מוזמנות / שולמו עד כה</td><td class="n">${qty(o.orderedHours)} / ${qty(o.paidHoursBefore)}</td></tr></tbody></table></div></div>
+    <details><summary>שורות הדיווח (${d.rows.length})</summary><div class="tableWrap"><table><thead><tr><th>תאריך</th><th>התחלה</th><th>סיום</th><th>קיזוז</th><th>שעות</th><th>עשרוני</th><th>תיאור</th><th></th></tr></thead>
+      <tbody>${rows}<tr class="total"><td colspan="4">סה״כ</td><td class="n">${hhmm(d.hours.computed)}</td><td class="n">${qty(d.hours.computed)}</td><td colspan="2"></td></tr></tbody></table></div></details></div>`;
+}
+async function fillPersonFromReport() {
+  const p = {...personById(S.personId)}, e = S.scan.parsed.employee;
+  for (const k of ['personalId', 'title', 'degreeDate', 'rate']) if (!p[k] && e[k]) p[k] = e[k];
+  upsert('people', p); await saveDb(); S.scan.compare = compareEmployee(p, e); $('#scanOut').innerHTML = scanHtml(); renderAssignLines(); toast('כרטיס העובד עודכן');
+}
+/* כמויות מוצעות לכל פריט פעיל בחודש. כשהחודש מתחלק בין שתי תקופות - מפצלים לפי תאריכי השורות בדוח. */
+function suggestLines(o, d) {
+  let ls = linesForMonth(o, S.month); if (!ls.length) ls = [lineOf(o, 'hours'), lineOf(o, 'km')].filter(l => l.type);
+  const hl = ls.filter(l => l.type === 'hours'), kl = ls.filter(l => l.type === 'km');
+  const inRange = (l, date) => (!l.from || date >= l.from) && (!l.to || date <= l.to);
+  return ls.map(l => {
+    let q = null, note = '';
+    if (d) {
+      const rows = (l.type === 'hours' ? hl : kl).length > 1 ? d.rows.filter(x => inRange(l, x.date)) : d.rows;
+      if (l.type === 'hours') q = (hl.length > 1) ? r2(rows.reduce((a, x) => a + x.hours, 0)) : d.hours.final;
+      else { const days = new Set(rows.filter(x => x.hours > 0).map(x => x.date)).size; const per = l.dailyKm || d.km.perDay || 0; q = days * per;
+        note = `${days} ימים × ${per}` + (l.dailyKm && d.km.perDay && l.dailyKm !== d.km.perDay ? ` (לפי ההזמנה; בדוח ${d.km.perDay})` : ''); }
+      if ((l.type === 'hours' ? hl : kl).length > 1) note = (note ? note + ' · ' : '') + `שורות מתאריך ${dateHe(l.from)} עד ${dateHe(l.to)}`;
+    }
+    return {line: l, qty: q, note};
+  });
+}
+function assignHtml(r, saved) {
+  const os = ordersOf(S.personId), d = r.parsed;
+  const oid = saved?.orderId || r.orderMatch || (os.length === 1 ? os[0].id : '');
+  return `<div class="card"><h2>שיוך להזמנה וכמויות לחיוב</h2>
+    ${saved ? `<div class="alert info">קיים שיוך שמור לחודש זה (${esc(saved.status || 'טיוטה')}). שמירה תעדכן אותו.</div>` : ''}
+    ${!os.length ? `<div class="alert bad">לעובד אין הזמנה. הוסף הזמנה בלשונית "הזמנות".</div>` : ''}
+    <div class="form"><label>הזמנה<select id="aOrder" onchange="renderAssignLines()">${os.map(x => `<option value="${x.id}" ${x.id === oid ? 'selected' : ''}>${esc(x.number)}${x.version != null && x.version !== '' ? ' (גרסה ' + esc(x.version) + ')' : ''}</option>`).join('')}</select></label>
+      <label>מס׳ חשבונית עסקה<input id="aDeal" class="num" value="${esc(saved?.dealInvoiceNo ?? d?.order.dealInvoiceNo ?? '')}"></label></div>
+    <div id="aLines" style="margin-top:10px"></div>
+    <div id="aChecks"></div>
+    <div class="row" style="margin-top:10px"><button class="primary" ${os.length ? '' : 'disabled'} onclick="saveAssign()">שמור שיוך</button>
+      ${saved ? `<button onclick="S.tab='produce';remember();render()">המשך להפקת חשבון ←</button>` : ''}</div></div>`;
+}
+function renderAssignLines() {
+  const el = $('#aLines'); if (!el) return; const o = orderById($('#aOrder')?.value); if (!o) { el.innerHTML = ''; return; }
+  const d = S.scan?.parsed, saved = reportFor(S.personId, S.month);
+  const sug = suggestLines(o, d);
+  const savedQty = l => { if (!saved || saved.orderId !== o.id) return null; const x = repLinesOf(saved, o).find(y => y.type === l.type && String(y.itemNo ?? '') === String(l.itemNo ?? '')); return x ? x.qty : null; };
+  const split = new Set(sug.map(x => x.line.to)).size > 1;
+  el.innerHTML = (split ? `<div class="alert info">החודש ${monthLabel(S.month)} מתחלק בין שתי תקופות של ההזמנה. השעות והק״מ פוצלו לפי תאריכי השורות בדוח - כל פריט מקבל רק את הימים של התקופה שלו.</div>` : '') +
+    `<div class="tableWrap"><table><thead><tr><th>פריט</th><th>סוג</th><th>תקופה</th><th>תעריף</th><th>חולץ מהדוח</th><th>כמות לחיוב</th><th>סכום</th></tr></thead><tbody>` +
+    sug.map(x => { const v = savedQty(x.line) ?? x.qty ?? ''; return `<tr><td class="n">${esc(x.line.itemNo || '—')}</td><td>${x.line.type === 'hours' ? 'שעות' : 'ק״מ'}</td>
+      <td class="n small">${x.line.from || x.line.to ? `${dateHe(x.line.from)} – ${dateHe(x.line.to)}` : '—'}</td><td class="n">${money(x.line.rate)}</td>
+      <td class="n">${x.qty === null ? '—' : qty(x.qty)}<div class="small muted">${esc(x.note)}</div></td>
+      <td><input class="num aQty" data-item="${esc(x.line.itemNo ?? '')}" data-type="${x.line.type}" data-rate="${x.line.rate || 0}" value="${esc(v)}" style="width:100px" oninput="assignChecks()"></td>
+      <td class="n aAmt"></td></tr>`; }).join('') + `</tbody></table></div>` +
+    (d && sug.filter(x => x.line.type === 'hours').length > 1 && Math.abs(sug.filter(x => x.line.type === 'hours').reduce((a, x) => a + (x.qty || 0), 0) - d.hours.final) > 0.01
+      ? `<div class="alert warn">סכום השעות אחרי הפיצול שונה מסה״כ בטופס (${qty(d.hours.final)}).</div>` : '');
+  assignChecks();
+}
+function assignQtys() { return [...document.querySelectorAll('.aQty')].map(el => ({itemNo: el.dataset.item || null, type: el.dataset.type, qty: Number(el.value || 0), rate: Number(el.dataset.rate)})); }
+function lineCum(o, l, before) {  // כמות מצטברת בפריט מהשיוכים הקודמים במערכת
+  let q = 0; S.db.reports.filter(x => x.orderId === o.id && x.month < before).forEach(x => { repLinesOf(x, o).forEach(y => { if (y.type === l.type && String(y.itemNo ?? '') === String(l.itemNo ?? '')) q += Number(y.qty) || 0; }); });
+  return q;
+}
+function assignChecks() {
+  const el = $('#aChecks'); if (!el) return; const o = orderById($('#aOrder')?.value); if (!o) { el.innerHTML = ''; return; }
+  const msgs = [], [m1, m2] = monthRange(S.month); let total = 0;
+  if (o.validFrom && m2 < o.validFrom) msgs.push(['bad', `החודש לפני תחילת תוקף ההזמנה (${dateHe(o.validFrom)}).`]);
+  if (o.validTo && m1 > o.validTo) msgs.push(['bad', `החודש אחרי סוף תוקף ההזמנה (${dateHe(o.validTo)}).`]);
+  const qs = assignQtys();
+  document.querySelectorAll('.aQty').forEach((inp, i) => { const x = qs[i]; const amt = r2(x.qty * x.rate); total += amt; inp.closest('tr').querySelector('.aAmt').textContent = money(amt); });
+  for (const x of qs) {
+    const l = linesOf(o).find(y => y.type === x.type && String(y.itemNo ?? '') === String(x.itemNo ?? '')) || lineOf(o, x.type, S.month);
+    const c = lineCum(o, l, S.month), nm = `פריט ${l.itemNo || ''} (${x.type === 'hours' ? 'שעות' : 'ק״מ'})`;
+    if (l.qty && c + x.qty > l.qty) msgs.push(['bad', `חריגה ממכסת ${nm}: ${qty(c + x.qty)} מתוך ${qty(l.qty)}.`]);
+    if (x.type === 'hours' && l.monthlyHours && x.qty > l.monthlyHours) msgs.push(['warn', `ב${nm} ${qty(x.qty)} שעות - מעל המאושר לחודש (${qty(l.monthlyHours)}).`]);
+  }
+  el.innerHTML = msgs.map(([c2, t]) => `<div class="alert ${c2}">⚠ ${esc(t)}</div>`).join('') +
+    `<div class="small" style="margin-top:6px">סכום משוער לחודש: <b>${money(r2(total))}</b> ללא מע״מ. התראות אינן משנות נתונים.</div>`;
+}
+async function saveAssign() {
+  const d = S.scan.parsed, rp = S.scan.report || {}, orderId = $('#aOrder').value;
+  const old = S.db.reports.find(x => x.personId === S.personId && x.month === S.month);
+  if (old && old.orderId !== orderId) S.db.reports = S.db.reports.filter(x => x !== old);
+  const lines = assignQtys().map(({itemNo, type, qty}) => ({itemNo, type, qty}));
+  const sum = t => r2(lines.filter(x => x.type === t).reduce((a, x) => a + x.qty, 0));
+  const rec = {...(old || {}), id: reportId(S.personId, S.month, orderId), personId: S.personId, month: S.month, orderId, lines,
+    hours: sum('hours'), km: sum('km'), dealInvoiceNo: $('#aDeal').value.trim() || null,
+    hoursExtracted: d?.hours.final ?? null, kmExtracted: d?.km.final ?? null, uniqueDays: d?.km.uniqueDays ?? null,
+    reportStem: rp.stem, reportXlsx: rp.xlsx || null, reportPdf: rp.pdf || null, status: old?.status === 'הופק' ? 'הופק' : 'מוכן לבדיקה'};
+  upsert('reports', rec); await saveDb(); toast('השיוך נשמר'); $('#scanOut').innerHTML = scanHtml(); renderAssignLines();
+}
+
+/* ---------------------------------------------------------------- summary */
+function viewSummary(v) {
+  const reps = S.db.reports.filter(r => r.month === S.month); let tot = 0;
+  const rows = reps.map(r => { const p = personById(r.personId), o = orderById(r.orderId); const ls = repLinesOf(r, o);
+    const go = `onclick="S.personId='${r.personId}';S.tab='produce';S.prep=null;remember();render()"`;
+    return ls.map((x, i) => { const l = linesOf(o).find(y => y.type === x.type && String(y.itemNo ?? '') === String(x.itemNo ?? '')) || lineOf(o, x.type, r.month);
+      const rate = l.rate || 0, prevQ = lineCum(o, l, r.month), cur = r2((x.qty || 0) * rate); tot += cur;
+      return `<tr class="clickable" ${go}>${i === 0 ? `<td rowspan="${ls.length}"><b>${esc(p?.name)}</b><div class="small muted">${esc(o?.number)}</div></td>` : ''}
+        <td>${x.type === 'hours' ? 'שעות' : 'ק״מ'}${x.itemNo ? ` <span class="small muted">פריט ${esc(x.itemNo)}</span>` : ''}</td><td class="n">${qty(x.qty)}</td><td class="n">${money(rate)}</td>
+        <td class="n">${money(r2(prevQ * rate))}</td><td class="n"><b>${money(cur)}</b></td><td class="n">${money(r2(prevQ * rate + cur))}</td>
+        ${i === 0 ? `<td rowspan="${ls.length}"><span class="pill ${r.status === 'הופק' ? 'ok' : 'missing'}">${esc(r.status || 'טיוטה')}</span>${r.invoiceNo ? `<div class="small">חשבון ${r.invoiceNo}</div>` : ''}</td>` : ''}</tr>`; }).join(''); }).join('');
+  v.innerHTML = `<div class="card"><div class="row"><h2 style="margin:0">ריכוז חיוב חודשי</h2><span style="margin-inline-start:12px">${monthNav()}</span></div>
+    <p class="small muted" style="margin:8px 0 0">"מצטבר קודם" כאן מחושב מהשיוכים שבמערכת, לכל פריט בנפרד. בהפקת החשבון המצטבר נלקח מהחשבון הקודם עצמו (המקור המחייב).</p></div>
+    <div class="stats"><div class="stat"><div class="label">עובדים בחודש</div><div class="value">${reps.length}</div></div><div class="stat good"><div class="label">סה״כ לחודש (ללא מע״מ)</div><div class="value">${money(r2(tot))}</div></div>
+      <div class="stat"><div class="label">הופקו</div><div class="value">${reps.filter(r => r.status === 'הופק').length} / ${reps.length}</div></div></div>
+    <div class="tableWrap"><table><thead><tr><th>עובד / הזמנה</th><th>סוג</th><th>כמות חדשה</th><th>תעריף</th><th>מצטבר קודם</th><th>בחודש זה</th><th>מצטבר חדש</th><th>סטטוס</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="8" class="empty">אין שיוכים שמורים לחודש ${monthLabel(S.month)}.</td></tr>`}</tbody></table></div>`;
+}
+
+/* ---------------------------------------------------------------- produce */
+function viewProduce(v) {
+  const p = personById(S.personId), rep = reportFor(S.personId, S.month), o = rep ? orderById(rep.orderId) : null;
+  const prevNos = S.db.reports.filter(r => rep && r.orderId === rep.orderId && r.invoiceNo && r.month < S.month).map(r => r.invoiceNo);
+  const sug = rep?.invoiceNo || (prevNos.length ? Math.max(...prevNos) + 1 : 1);
+  v.innerHTML = `<div class="card"><div class="row"><b>עובד:</b> ${personSelect('selP2')} <b style="margin-inline-start:10px">חודש:</b> ${monthNav()}</div></div>
+  ${!p ? `<div class="card empty">בחר עובד.</div>` : !rep ? `<div class="card"><div class="alert warn">אין שיוך שמור לחודש ${monthLabel(S.month)}. יש לשמור קודם במסך "דיווח והכנת חיוב".</div></div>` : `
+  <div class="card"><h2>פרטי החשבון</h2><div class="form">
+    <label>הזמנה<input value="${esc(o?.number)}" disabled class="num"></label><label>מספר חשבון<input id="pNo" class="num" value="${sug}"></label>
+    <label>סוג החשבון<select id="pType"><option value="">ללא שינוי (כמו הקודם)</option><option>חשבון חלקי </option><option>ח-ן סופי (סגירת ההתקשרות)</option></select></label>
+    <label>מס׳ חשבונית עסקה<input id="pDeal" class="num" value="${esc(rep.dealInvoiceNo || '')}"></label></div>
+    <div class="small muted" style="margin-top:6px">${repLinesOf(rep, o).map(x => `${x.type === 'hours' ? 'שעות' : 'ק״מ'}${x.itemNo ? ' (פריט ' + esc(x.itemNo) + ')' : ''}: <b>${qty(x.qty)}</b>`).join(' · ')} · דוח: ${bdi(rep.reportPdf || rep.reportXlsx || '')}</div>
+    <div class="row" style="margin-top:10px"><button class="primary" onclick="doPrepare()">בדוק והכן</button>
+      ${o && !o.templateName ? `<button onclick="uploadTemplate('${o.id}')">העלה תבנית לחשבון ראשון</button>` : ''}</div></div>
+  <div id="prepOut">${S.prep ? prepHtml(S.prep) : ''}</div>`}`;
+}
+function prepOpts(extra) { return {invoiceNo: Number($('#pNo').value), invoiceType: $('#pType').value || null, dealNo: $('#pDeal').value.trim() || null, ...(extra || {})}; }
+async function doPrepare(extra) {
+  const opts = prepOpts(extra);
+  const r = await run(() => prepareInvoice(opts), 'מחפש חשבון קודם ומחשב מצטברים…'); if (!r) return;
+  S.prep = {...r, opts}; $('#prepOut').innerHTML = prepHtml(S.prep);
+}
+function pickPrevious() { pickFile('.xlsx', async f => doPrepare({previousFile: {name: f.name, buf: await f.arrayBuffer()}})); }
+function prepHtml(r) {
+  let h = `<div class="card"><h2>בקרה לפני הפקה</h2>${stepsHtml(r.steps)}`;
+  if (r.needTemplate) { const rep = reportFor(S.personId, S.month); h += `<button onclick="uploadTemplate('${rep.orderId}')">העלה תבנית 23.030</button>`; }
+  if (r.previousChoices) h += `<div class="alert warn">בחר את החשבון הקודם הנכון:</div>` + r.previousChoices.map((x, i) => `<div><button class="small" onclick="doPrepare({previousFile:S.prep.previousChoices[${i}]})">${bdi(x.name)}</button></div>`).join('');
+  if (r.allowPick) h += `<button class="small" onclick="pickPrevious()">בחר קובץ חשבון קודם ידנית…</button>`;
+  if (r.rejected?.length) h += `<details><summary>קבצים שנבדקו ונפסלו (${r.rejected.length})</summary><ul class="small">${r.rejected.map(x => `<li>${bdi(x.file)} — ${esc(x.reason)}</li>`).join('')}</ul></details>`;
+  if (!r.ready) return h + `</div>`;
+  const pl = r.plan, over = pl.review.some(x => x.overBudget), N = r.names;
+  h += `<div class="small muted">בסיס: <b>${bdi(r.srcName)}</b>${r.isFirst ? ' (תבנית חשבון ראשון)' : ` · חשבון מס׳ ${r.prev.invoiceNo}, ${dateHe(r.prev.periodFrom)}–${dateHe(r.prev.periodTo)}`}</div>
+    <div class="tableWrap" style="margin-top:8px"><table><thead><tr><th>סוג</th><th>פריט</th><th>שורה בטופס</th><th>כמות</th><th>תעריף</th><th>מצטבר קודם</th><th>בחשבון זה</th><th>מצטבר חדש</th><th>תקציב</th><th>יתרה</th></tr></thead><tbody>` +
+    pl.review.map(x => `<tr><td><b>${esc(x.label)}</b></td><td class="n">${esc(x.item || '—')}</td><td>${esc(x.formNo ?? '')}. ${esc(x.name)}${x.added ? ' <span class="pill missing">שורה חדשה בטופס</span>' : ''}${x.budgetChanged ? ' <span class="pill missing">תקציב עודכן</span>' : ''}</td><td class="n">${qty(x.qty)}</td><td class="n">${money(x.rate)}</td><td class="n">${money(x.prevCumulative)}</td><td class="n"><b>${money(x.current)}</b></td><td class="n">${money(x.cumulative)}</td><td class="n">${money(x.budget)}</td><td class="n" style="${x.overBudget ? 'color:var(--bad);font-weight:700' : ''}">${money(x.remaining)}</td></tr>`).join('') +
+    `<tr class="total"><td colspan="6">סה״כ לתשלום</td><td class="n">${money(pl.totalNoVat)}</td><td colspan="3" class="n">כולל מע״מ ${Math.round(pl.vat * 100)}%: ${money(pl.totalWithVat)}</td></tr></tbody></table></div>
+    <div class="small muted" style="margin-top:6px">תקופת השירות: ${dateHe(pl.periodFrom)} – ${dateHe(pl.periodTo)} · חשבון מס׳ ${r.invoiceNo}</div>
+    ${(pl.notes || []).map(t => `<div class="alert info">${esc(t)}</div>`).join('')}${pl.review.some(x => x.added) ? `<div class="alert warn">יתווספו לטופס שורות לפריטים החדשים בהזמנה (מסומנים "שורה חדשה בטופס"), עם התקציב והתעריף מההזמנה. בדוק לפני יצירת הקובץ.</div>` : ''}
+    ${over ? `<div class="alert bad">⚠ המצטבר חורג מהתקציב בהזמנה.</div>` : ''}
+
+    <div class="stepBox ${r.exists.xlsx ? 'done' : ''}" id="st1"><h3><span class="stepNo">1</span>יצירת קובץ החשבון (Excel)</h3>
+      <div class="small">ייווצר בתיקיית החודש: ${bdi(N.xlsx)} ${r.exists.xlsx ? '<span class="pill ok">קיים</span>' : ''}</div>
+      <div class="row" style="margin-top:8px"><button class="primary" onclick="stepCreateXlsx()">${r.exists.xlsx ? 'צור מחדש (יחליף באישור)' : '✓ אישור ויצירת קובץ Excel'}</button></div></div>
+
+    <div class="stepBox ${r.exists.pdf ? 'done' : ''}"><h3><span class="stepNo">2</span>שמירה כ-PDF ב-Excel (צעד ידני)</h3>
+      <ol class="howto small"><li>פתח את הקובץ <b>${bdi(N.xlsx)}</b> מתיקיית החודש ב-Excel.</li>
+        <li>קובץ ← שמירה בשם ← סוג קובץ: <b>PDF</b> ← אותה תיקייה, שם מומלץ: <b>${bdi(N.pdf)}</b> (האתר מזהה את החשבון לפי התוכן, כך ששם אחר גם יעבוד)</li>
+        <li>אם Excel שואל אם לשמור שינויים בקובץ - <b>כן</b> (כך הערכים המחושבים נשמרים לחודש הבא).</li></ol>
+      ${r.reportPdf ? '' : `<div class="alert warn">לדוח השעות אין PDF. שמור גם אותו כ-PDF באותה תיקייה (${bdi((r.reportXlsx || '').replace(/\.xlsx$/i, '.pdf'))}).</div>`}
+      ${r.exists.pdf ? '<span class="pill ok">✓ נמצא PDF של החשבון</span>' : ''}</div>
+
+    <div class="stepBox ${r.exists.merged ? 'done' : ''}"><h3><span class="stepNo">3</span>איחוד: עמוד החשבון + דוח השעות</h3>
+      <div class="small">ייווצר בתיקיית החודש: ${bdi(N.merged)} ${r.exists.merged ? '<span class="pill ok">קיים</span>' : ''}</div>
+      <div class="row" style="margin-top:8px"><button class="primary" onclick="stepMerge()">חפש PDF בתיקייה ואחד</button>
+        <button class="small" onclick="pickFile('.pdf', f => stepMerge(f))">או בחר את PDF החשבון ידנית…</button></div>
+      <div id="mergeOut"></div></div></div>`;
+  return h;
+}
+async function stepCreateXlsx() {
+  const r = S.prep;
+  await run(async () => {
+    const mf = await subDir(await personDir(personById(S.personId)), folderName(S.month));
+    if (await fileExists(mf, r.names.xlsx) && !confirm(`הקובץ ${r.names.xlsx} כבר קיים. להחליף אותו?`)) return;
+    const bytes = await writeInvoice(r.src, r.prev.sheet, r.plan.changes);
+    await writeFile(mf, r.names.xlsx, bytes);
+    const rep = reportFor(S.personId, S.month);
+    Object.assign(rep, {invoiceNo: r.invoiceNo, status: 'Excel נוצר', totals: {noVat: r.plan.totalNoVat, withVat: r.plan.totalWithVat}, review: r.plan.review}); upsert('reports', rep); await saveDb();
+    r.exists.xlsx = true; $('#prepOut').innerHTML = prepHtml(r); toast('קובץ החשבון נוצר בתיקיית החודש - פתח אותו ב-Excel ושמור כ-PDF');
+  }, 'יוצר קובץ Excel…');
+}
+async function stepMerge(manualFile) {
+  const r = S.prep;
+  await run(async () => {
+    const mf = await subDir(await personDir(personById(S.personId)), folderName(S.month));
+    const rep = reportFor(S.personId, S.month);
+    const checks = [];
+    // --- PDF החשבון: בודקים לפי התוכן שזה באמת טופס 23.030 ולא דוח שעות
+    let invBuf = null, invName = null;
+    const tryInvoice = async (buf, name) => {
+      const t = await pdfFirstPageText(buf); const k = pdfKind(t.text);
+      if (k === 'report') return `הקובץ ${name} הוא דוח שעות (טופס 23.031) ולא החשבון. כנראה נשמר מהקובץ הלא נכון - פתח את ${r.names.xlsx} ושמור אותו כ-PDF.`;
+      if (k !== 'invoice') return `בעמוד הראשון של ${name} לא נמצא "טופס 23.030".`;
+      invBuf = buf; invName = name; checks.push({ok: true, text: `עמוד 1 של ${name} הוא טופס 23.030 (חשבון)`});
+      const cur = r.plan.totalNoVat;
+      if (t.text.replace(/\s/g, '').includes(fmtAmount(cur))) checks.push({ok: true, text: `הסכום בחשבון תואם: ₪${fmtAmount(cur)}`});
+      else checks.push({ok: null, text: `לא נמצא בעמוד החשבון הסכום ₪${fmtAmount(cur)} - ודא שה-PDF נשמר מהקובץ ${r.names.xlsx} העדכני.`});
+      return null;
+    };
+    let err = null;
+    if (manualFile) err = await tryInvoice(await manualFile.arrayBuffer(), manualFile.name);
+    else {
+      if (await fileExists(mf, r.names.pdf)) err = await tryInvoice(await readFile(mf, r.names.pdf), r.names.pdf);
+      if (!invBuf) {  // חיפוש לפי תוכן בכל קבצי ה-PDF בתיקייה
+        const found = [];
+        for (const e of await listEntries(mf)) {
+          if (e.kind !== 'file' || !/\.pdf$/i.test(e.name) || /חשבון_ודיווח|מאוחד/.test(e.name) || e.name === r.names.pdf) continue;
+          try { const b = await readFile(mf, e.name); const t = await pdfFirstPageText(b); if (pdfKind(t.text) === 'invoice' && t.text.replace(/\s/g, '').includes(fmtAmount(r.plan.totalNoVat))) found.push({name: e.name, buf: b}); } catch (x) {}
+        }
+        if (found.length === 1) { err = await tryInvoice(found[0].buf, found[0].name); }
+        else if (found.length > 1) err = `נמצאו כמה קבצי PDF של חשבון מתאים (${found.map(x => x.name).join(', ')}) - בחר ידנית.`;
+        else if (!err) err = `לא נמצא PDF של החשבון בתיקיית החודש. שמור את ${r.names.xlsx} כ-PDF (צעד 2), או בחר את הקובץ ידנית.`;
+      }
+    }
+    if (!invBuf) throw new Error(err);
+    // --- PDF דוח השעות
+    const repPdfName = rep.reportPdf || (rep.reportXlsx || '').replace(/\.xlsx$/i, '.pdf');
+    if (!repPdfName || !await fileExists(mf, repPdfName)) throw new Error(`לא נמצא PDF של דוח השעות (${repPdfName}). שמור את הדוח כ-PDF באותה תיקייה.`);
+    const repBuf = await readFile(mf, repPdfName);
+    const rk = pdfKind((await pdfFirstPageText(repBuf)).text);
+    if (rk === 'invoice') throw new Error(`הקובץ ${repPdfName} מכיל חשבון ולא דוח שעות.`);
+    checks.push(rk === 'report' ? {ok: true, text: `${repPdfName} הוא דוח שעות (טופס 23.031)`} : {ok: null, text: `לא זוהה "טופס 23.031" ב-${repPdfName} - בדוק שזה דוח השעות.`});
+    const res = await mergeInvoiceAndReport(invBuf, repBuf);
+    if (await fileExists(mf, r.names.merged) && !confirm(`${r.names.merged} כבר קיים. להחליף אותו?`)) return;
+    await writeFile(mf, r.names.merged, res.bytes);
+    Object.assign(rep, {status: 'הופק', invoiceNo: r.invoiceNo, reportPdf: repPdfName, producedAt: new Date().toISOString(), outputs: r.names}); upsert('reports', rep); await saveDb();
+    r.exists.merged = r.exists.pdf = true; $('#prepOut').innerHTML = prepHtml(r);
+    $('#mergeOut').innerHTML = stepsHtml(checks) + `<div class="alert good">✓ נשמר בתיקיית החודש: ${bdi(r.names.merged)} — ${1 + res.reportPages} עמודים: עמוד 1 = החשבון (מתוך ${bdi(invName)}), ${res.reportPages > 1 ? 'עמודים 2-' + (1 + res.reportPages) : 'עמוד 2'} = דוח השעות</div>
+      <button class="small" onclick="download(S.lastMerged, '${esc(r.names.merged)}', 'application/pdf')">הורד עותק</button>`;
+    S.lastMerged = res.bytes; toast('החשבון הופק');
+  }, 'בודק ומאחד PDF…');
+}
+
+/* ---------------------------------------------------------------- tools */
+function viewTools(v) {
+  v.innerHTML = `<div class="grid2">
+  <div class="card"><h2>תיקיית בסיס</h2>
+    ${!fsSupported() ? '<div class="alert bad">הדפדפן הזה לא תומך בגישה לתיקיות. יש לפתוח את האתר ב-Google Chrome או Microsoft Edge במחשב.</div>' : `
+    <p>${S.root ? `נבחרה: <b>${esc(S.root.name)}</b> ${S.rootPerm === 'granted' ? '<span class="pill ok">✓ גישה מאושרת</span>' : '<span class="pill missing">נדרש אישור</span>'}` : 'לא נבחרה תיקייה.'}</p>
+    <p class="small muted">התיקייה שבתוכה נמצאות תיקיות כל העובדים (למשל <code dir="ltr">D:\\אטלס\\אהו''ב</code>). כל עובד מקבל תת-תיקייה משלו בכרטיס העובד.</p>
+    <div class="row"><button onclick="pickRoot()">${S.root ? 'החלף תיקיית בסיס' : 'בחר תיקיית בסיס'}</button>${S.root && S.rootPerm !== 'granted' ? '<button class="primary" onclick="grantRoot()">אשר גישה</button>' : ''}</div>`}</div>
+  <div class="card"><h2>נתונים וגיבוי</h2>
+    <p class="small">הנתונים (עובדים, הזמנות, שיוכים) נשמרים בדפדפן, וגם כקובץ <code dir="ltr">${DATA_FILE}</code> בתיקיית הבסיס - כך הם לא הולכים לאיבוד ואפשר לפתוח אותם גם במחשב אחר עם גישה לאותה תיקייה.</p>
+    <div class="row"><button onclick="exportBackup()">⬇ הורד גיבוי</button><button onclick="pickFile('.json', restoreBackup)">⬆ שחזור מגיבוי</button></div>
+    <h3>גרסה</h3><div class="small">ATLAS MOD ${APP_VERSION} · גרסת דפדפן</div></div></div>`;
+}
+function exportBackup() { download(JSON.stringify({schema: 'atlas-mod', version: 1, exportedAt: new Date().toISOString(), ...S.db}, null, 1), `atlas-mod-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json'); }
+async function restoreBackup(f) {
+  let d; try { d = JSON.parse(await f.text()); } catch (e) { return toast('קובץ לא תקין', true); }
+  if (d.schema !== 'atlas-mod') return toast('קובץ הגיבוי אינו של ATLAS MOD', true);
+  if (!confirm(`לשחזר ${d.people?.length || 0} עובדים, ${d.orders?.length || 0} הזמנות, ${d.reports?.length || 0} שיוכים, ${d.projects?.length || 0} פרויקטים, ${d.bills?.length || 0} חשבונות מתכננים? הנתונים הנוכחיים יוחלפו.`)) return;
+  exportBackup(); S.db = dbFrom(d); await saveDb(); render(); toast('שוחזר');
+}
+
+/* =====================================================================
+   מודול: חשבונות מתכננים בפרויקטים
+   פרויקט ← מתכננים (הצעת שכ"ט: אבני דרך % / שעות) ← חשבונות.
+   לכל חשבון 4 שלבים: 1 חשבונית עסקה (מס׳+תאריך) · 2 הועבר לתשלום · 3 שולם · 4 חשבונית מס
+   ===================================================================== */
+const PTABS = [['pdash', 'לוח בקרה והתראות'], ['projects', 'פרויקטים ומתכננים'], ['pbills', 'כל החשבונות'], ['psettings', 'הגדרות התראות']];
+const DISCIPLINES = ['אדריכלות', 'קונסטרוקציה', 'חשמל', 'מיזוג אוויר', 'אינסטלציה', 'מודד', 'אלומיניום', 'אקוסטיקה', 'נוף', 'בטיחות', 'תנועה', 'קרקע וביסוס', 'איטום', 'מעליות', 'קרינה', 'תאורה', 'בקרת תכנון', 'ניהול פרויקט', 'אחר'];
+const DISC_KEYS = [['אלומיניום', /אלומי/], ['אקוסטיקה', /אקוסט/], ['חשמל', /חשמל/], ['מיזוג אוויר', /מיזוג|מיז"א/], ['אינסטלציה', /אינסטל/], ['קונסטרוקציה', /קונסטרוק/], ['מודד', /מדיד|מודד/], ['נוף', /אדריכלות נוף|נוף/], ['אדריכלות', /אדריכל/], ['בטיחות', /בטיחות|כיבוי/], ['תנועה', /תנועה|תחבור/], ['קרקע וביסוס', /קרקע|ביסוס/], ['איטום', /איטום/], ['קרינה', /קרינה/], ['מעליות', /מעלית/]];
+const psettings = () => ({transferDays: 7, dueSoonDays: 7, taxInvoiceDays: 14, ...(S.db.settings?.alerts || {})});
+const todayIso = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+const endOfMonth = iso => monthRange(iso.slice(0, 7))[1];
+const projById = id => S.db.projects.find(x => x.id === id);
+const engById = id => S.db.engagements.find(x => x.id === id);
+const engsOf = pid => S.db.engagements.filter(e => e.projectId === pid).sort((a, b) => (a.discipline || '').localeCompare(b.discipline || '', 'he'));
+const billsOf = eid => S.db.bills.filter(b => b.engagementId === eid).sort((a, b) => (a.seq || 0) - (b.seq || 0));
+const termsText = t => !t ? '' : t.type === 'eom' ? `שוטף + ${t.days}` : `${t.days} יום מקבלת החשבונית`;
+function dueDate(bill, eng) { const d = bill.deal?.date; if (!d) return null; const t = eng?.terms || {type: 'eom', days: 30}; return t.type === 'eom' ? addDays(endOfMonth(d), t.days) : addDays(d, t.days); }
+function engFee(e) { return r2((Number(e.fee) || 0) + (e.extras || []).reduce((a, x) => a + (Number(x.amount) || 0), 0)); }
+function billNet(b) { return r2((b.lines || []).reduce((a, l) => a + (Number(l.amount) || 0), 0)); }
+function billGross(b) { const v = b.vat ?? 0.18; return r2(billNet(b) * (1 + v)); }
+function billStatus(b) { return b.tax?.no ? 4 : b.payment?.date ? 3 : b.transfer?.date ? 2 : b.deal?.date || b.deal?.no ? 1 : 0; }
+/* מצב תשלום לצביעה: שולם (ירוק) · באיחור (אדום) · בשבוע הקרוב (כחול) */
+function payState(b, e) {
+  if (b.payment?.date) return 'paid';
+  const due = dueDate(b, e); if (!due) return 'open';
+  const d = daysBetween(todayIso(), due);
+  return d < 0 ? 'late' : d <= psettings().dueSoonDays ? 'soon' : 'open';
+}
+const PAY_CLS = {paid: 'payDone', late: 'payLate', soon: 'paySoon', open: ''};
+const PAY_LABEL = {paid: 'שולם', late: 'באיחור', soon: 'לתשלום השבוע', open: 'פתוח'};
+function fold(key, title, body, opts = {}) {
+  const st = (() => { try { return JSON.parse(localStorage.getItem('atlasmod.fold') || '{}'); } catch (e) { return {}; } })();
+  const open = st[key] !== undefined ? st[key] : opts.open !== false;
+  return `<details class="fold ${opts.inner ? 'inner' : ''}" ${open ? 'open' : ''} ontoggle="saveFold('${key}', this.open)"><summary>${title}${opts.right ? `<span class="sumR">${opts.right}</span>` : ''}</summary><div class="foldBody">${body}</div></details>`;
+}
+function saveFold(key, open) { try { const st = JSON.parse(localStorage.getItem('atlasmod.fold') || '{}'); st[key] = open; localStorage.setItem('atlasmod.fold', JSON.stringify(st)); } catch (e) {} }
+function setAllFolds(open) { document.querySelectorAll('#view details.fold').forEach(d => { d.open = open; }); }
+const foldTools = () => `<div class="row small" style="justify-content:flex-end;margin:-4px 0 8px"><a href="#" onclick="setAllFolds(true);return false">פתח הכל</a> · <a href="#" onclick="setAllFolds(false);return false">סגור הכל</a></div>`;
+const payLegend = () => `<div class="legend"><span class="paySoon">● לתשלום בשבוע הקרוב</span><span class="payLate">● באיחור</span><span class="payDone">● שולם</span></div>`;
+const STAGE_NAMES = ['טיוטה', 'התקבלה חשבונית עסקה', 'הועבר לתשלום', 'שולם', 'התקבלה חשבונית מס'];
+function msClaimed(e, msId, exceptBillId) { return r2(S.db.bills.filter(b => b.engagementId === e.id && b.id !== exceptBillId).reduce((a, b) => a + (b.lines || []).filter(l => l.msId === msId).reduce((x, l) => x + (Number(l.portion) || 0), 0), 0)); }
+function engStats(e) {
+  const bs = billsOf(e.id), fee = engFee(e);
+  const sum = f => r2(bs.filter(f).reduce((a, b) => a + billNet(b), 0));
+  const billed = sum(() => true), transferred = sum(b => b.transfer?.date), paid = r2(bs.filter(b => b.payment?.date).reduce((a, b) => a + (b.payment.amount != null && b.payment.amount !== '' ? Number(b.payment.amount) / (1 + (b.vat ?? 0.18)) : billNet(b)), 0));
+  return {fee, billed, transferred, paid, remaining: r2(fee - billed), pct: fee ? billed / fee * 100 : 0, bills: bs.length, open: bs.filter(b => billStatus(b) < 4).length};
+}
+/* --------------------------------------------------------------- alerts */
+function projAlerts() {
+  if (!S.db.bills) return [];
+  const st = psettings(), today = todayIso(), out = [];
+  for (const b of S.db.bills) {
+    const e = engById(b.engagementId); if (!e) continue; const p = projById(e.projectId);
+    const base = {billId: b.id, engId: e.id, projectId: e.projectId, who: `${p?.name || ''} · ${e.discipline || ''} · ${e.company || ''}`, bill: b.seq};
+    if (!b.deal?.no) out.push({...base, level: 'warn', kind: 'deal', text: 'חסר מספר חשבונית עסקה'});
+    if (b.deal?.date && !b.transfer?.date) { const d = daysBetween(b.deal.date, today); if (d >= st.transferDays) out.push({...base, level: 'warn', kind: 'transfer', text: `ממתין להעברה לתשלום ${d} ימים (התקבל ${dateHe(b.deal.date)})`, days: d}); }
+    if (b.transfer?.date && !b.payment?.date) {
+      const due = dueDate(b, e);
+      if (due) { const d = daysBetween(today, due);
+        if (d < 0) out.push({...base, level: 'bad', kind: 'overdue', text: `באיחור תשלום ${-d} ימים (לתשלום עד ${dateHe(due)} · ${termsText(e.terms)})`, days: -d});
+        else if (d <= st.dueSoonDays) out.push({...base, level: 'warn', kind: 'due', text: `לתשלום עד ${dateHe(due)} (${d === 0 ? 'היום' : d === 1 ? 'מחר' : `בעוד ${d} ימים`})`, days: d}); }
+    }
+    if (b.payment?.date && !b.tax?.no) { const d = daysBetween(b.payment.date, today); if (d >= st.taxInvoiceDays) out.push({...base, level: 'warn', kind: 'tax', text: `שולם לפני ${d} ימים - לא התקבלה חשבונית מס`, days: d}); }
+    if (b.payment?.date && b.payment.amount != null && b.payment.amount !== '' && Math.abs(Number(b.payment.amount) - billGross(b)) > 1) out.push({...base, level: 'info', kind: 'amount', text: `שולם ${money(b.payment.amount)} מתוך ${money(billGross(b))}`});
+  }
+  for (const e of S.db.engagements) {
+    const p = projById(e.projectId); const base = {engId: e.id, projectId: e.projectId, who: `${p?.name || ''} · ${e.discipline || ''} · ${e.company || ''}`};
+    for (const m of e.milestones || []) { const c = msClaimed(e, m.id); if (c > 100.5) out.push({...base, level: 'bad', kind: 'ms', text: `אבן הדרך "${m.name}" חויבה ב-${qty(c)}% (מעל 100%)`}); }
+    const s2 = engStats(e); if (s2.fee && s2.billed > s2.fee + 1) out.push({...base, level: 'bad', kind: 'fee', text: `סה״כ החשבונות (${money(s2.billed)}) עולה על שכר הטרחה (${money(s2.fee)})`});
+  }
+  const rank = {bad: 0, warn: 1, info: 2}; return out.sort((a, b) => rank[a.level] - rank[b.level] || (b.days || 0) - (a.days || 0));
+}
+/* --------------------------------------------------------------- quote PDF import */
+const HEB_MONTHS = {'ינואר': 1, 'פברואר': 2, 'מרץ': 3, 'מרס': 3, 'אפריל': 4, 'מאי': 5, 'יוני': 6, 'יולי': 7, 'אוגוסט': 8, 'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12};
+async function parseQuotePdf(buf, fileName) {
+  const doc = await pdfjsLib.getDocument({data: new Uint8Array(buf.slice(0))}).promise; const lines = [];
+  for (let pn = 1; pn <= doc.numPages; pn++) {
+    const tc = await (await doc.getPage(pn)).getTextContent(); const rows = {};
+    for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const y = Math.round(it.transform[5] / 3); (rows[y] = rows[y] || []).push(it); }
+    Object.keys(rows).map(Number).sort((a, b) => b - a).forEach(y => lines.push(rows[y].sort((a, b) => b.transform[4] - a.transform[4]).map(i => i.str.trim()).join(' ')));
+  }
+  // תיקון גופן שבור (האות נ מופיעה כ-ð) ורווחים סביב %
+  const fix = t => t.replace(/ ?ð ?/g, 'נ').replace(/%\s*(\d{1,3})/g, '$1%').replace(/(\d)\s+%/g, '$1%').replace(/\s{2,}/g, ' ').trim();
+  const L = lines.map(fix), text = L.join('\n');
+  const num = x => Number(String(x).replace(/,/g, ''));
+  let fee = null; const fm = /(?:סך\s+של|הינו\s+סך|סך)\s*:?\s*₪?\s*([\d,]{4,})\s*₪?\s*\+?\s*מע"מ/.exec(text) || /([\d,]{5,})\s*₪\s*\+\s*מע"מ/.exec(text); if (fm) fee = num(fm[1]);
+  let date = null; const dm = /(\d{1,2})\s+ב?(ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר)\s+(\d{4})/.exec(text);
+  if (dm) date = `${dm[3]}-${String(HEB_MONTHS[dm[2]]).padStart(2, '0')}-${dm[1].padStart(2, '0')}`; else { const d2 = /(\d{1,2})[./](\d{1,2})[./](\d{4})/.exec(text); if (d2) date = `${d2[3]}-${d2[2].padStart(2, '0')}-${d2[1].padStart(2, '0')}`; }
+  const quoteNo = (/מספרנו\s*:?\s*([\w\-/]+)/.exec(text) || /הצעה\s+מס'?\s*:?\s*([\w\-/]+)/.exec(text) || [])[1] || null;
+  let terms = null; const tm = /שוטף\s*\+\s*(\d+)/.exec(text); if (tm) terms = {type: 'eom', days: +tm[1]}; else { const t2 = /(\d+)\s*יום\s+מ(?:קבלת|יום)/.exec(text); if (t2) terms = {type: 'days', days: +t2[1]}; }
+  // אבני דרך: שורות אחוזים אחרי "תנאי תשלום" עד שמגיעים ל-100%
+  const pctLine = l => { const m = /(\d{1,3}(?:\.\d+)?)%/.exec(l); return m ? +m[1] : null; };
+  const clean = l => l.replace(/\d{1,3}(?:\.\d+)?%/, '').replace(/^\s*[-•·]?\s*(?:\d{1,2}\.\d{1,2}\s*\.?|\d{1,2}\s*\.|[א-ת]\.\s*)?/, '').replace(/,?\s*ישולם\s+סך\s+של\s*/g, '').replace(/\+?\s*מע"מ\.?/g, '').replace(/\s*[-–,.:]+\s*$/, '').replace(/^\s*[-–,.:]+\s*/, '').trim();
+  let start = L.findIndex(l => /תנאי\s+תשלום/.test(l)); const ms = [];
+  const collect = from => { let sum = 0; for (let i = from; i < L.length && sum < 100.01; i++) { const p = pctLine(L[i]); if (p === null || p > 100) continue; if (/שינויים|תוספת|Shop|פרטי ביצוע/.test(L[i])) continue; ms.push({id: uid('ms'), name: clean(L[i]) || `שלב ${ms.length + 1}`, percent: p}); sum += p; if (Math.abs(sum - 100) < 0.01) break; } return sum; };
+  let sum = start >= 0 ? collect(start + 1) : 0;
+  if (Math.abs(sum - 100) > 0.01) { ms.length = 0; sum = collect(0); }
+  const extras = []; const vm = /כל\s+ביקור\s+נוסף[^\n]*?([\d,]{3,})\s*₪/.exec(text); if (vm) extras.push({name: 'ביקור נוסף באתר (לפי צורך)', unit: num(vm[1])});
+  const subject = (/הנדון\s*:?\s*(.+)/.exec(text) || [])[1] || '';
+  const projGuess = (/לפרויקט\s+(.+?)(?:\n|$)/.exec(text) || [])[1] || subject.replace(/^הצעת (?:מחיר|שכ"ט)\s*/, '');
+  let discipline = ''; for (const [d, re] of DISC_KEYS) if (re.test(subject + ' ' + L.slice(0, 25).join(' '))) { discipline = d; break; }
+  const idx = L.findIndex(l => /^לכבוד/.test(l)); const head = L.slice(0, idx > 0 ? idx : 6).filter(l => !/אטלס|טלפון|פקס|כתובת|E.?Mail|@|^\d|L\.?T\.?D|תאריך|מספרנו|^ח\.?פ/i.test(l) && /[\u0590-\u05FF]{2}/.test(l));
+  let company = (head.find(l => /בע"מ|ושות|יועצ|הנדסה/.test(l)) || head[0] || '').trim();
+  if (!company) { const si = L.findIndex(l => /בכבוד\s+רב/.test(l)); if (si >= 0) company = (L.slice(si + 1).find(l => /[\u0590-\u05FF]{2}/.test(l) && !/חתימה|תאריך|תפקיד/.test(l)) || '').replace(/\s*-\s*$/, '').trim(); }
+  const email = (/([\w.\-]+@[\w.\-]+\.\w+)/.exec(text.replace(/denis@atlas-bd\.co\.il/g, '')) || [])[1] || '';
+  return {file: fileName, fee, date, quoteNo, terms, milestones: ms, milestonesSum: r2(sum), extras, subject, projGuess: projGuess.trim(), discipline, company, email};
+}
+/* --------------------------------------------------------------- views */
+function renderProj(v) {
+  ({pdash: viewPDash, projects: viewProjects, pbills: viewPBills, psettings: viewPSettings})[S.ptab](v);
+}
+function openBillFromAlert(billId, engId, projectId) { S.ptab = 'projects'; S.projectId = projectId; S.engId = engId; remember(); render(); if (billId) editBill(billId); }
+function alertsTable(list) {
+  if (!list.length) return `<div class="empty">✓ אין פריטים שדורשים טיפול</div>`;
+  return `<div class="tableWrap"><table><tbody>` + list.map(a => `<tr class="alertRow ${a.level} clickable" onclick="openBillFromAlert(${a.billId ? `'${a.billId}'` : 'null'},'${a.engId}','${a.projectId}')"><td></td>
+    <td>${esc(a.who)}${a.bill ? ` <span class="muted small">· חשבון ${esc(a.bill)}</span>` : ''}</td><td><b>${esc(a.text)}</b></td><td class="small muted">פתח ←</td></tr>`).join('') + `</tbody></table></div>`;
+}
+function viewPDash(v) {
+  const today = todayIso(), st = psettings(), al = projAlerts();
+  const all = S.db.bills.map(b => { const e = engById(b.engagementId); if (!e) return null; const p = projById(e.projectId);
+    return {b, e, p, due: dueDate(b, e), ps: payState(b, e), gross: billGross(b), st: billStatus(b)}; }).filter(Boolean);
+  const unpaid = all.filter(x => x.ps !== 'paid' && x.st >= 1);
+  const sum = list => r2(list.reduce((a, x) => a + x.gross, 0));
+  const late = unpaid.filter(x => x.ps === 'late').sort((a, b) => (a.due || '').localeCompare(b.due || ''));
+  const soon = unpaid.filter(x => x.ps === 'soon').sort((a, b) => (a.due || '').localeCompare(b.due || ''));
+  const in30 = unpaid.filter(x => x.ps === 'open' && x.due && daysBetween(today, x.due) <= 30).sort((a, b) => a.due.localeCompare(b.due));
+  const later = unpaid.filter(x => x.ps === 'open' && (!x.due || daysBetween(today, x.due) > 30)).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
+  const notTransferred = unpaid.filter(x => x.st === 1);
+  const paid30 = all.filter(x => x.ps === 'paid' && daysBetween(x.b.payment.date, today) <= 30).sort((a, b) => b.b.payment.date.localeCompare(a.b.payment.date));
+  const noTax = all.filter(x => x.st === 3);
+  const paidMonth = all.filter(x => x.ps === 'paid' && x.b.payment.date.slice(0, 7) === today.slice(0, 7));
+  const kpi = (cls, label, list, note) => `<div class="stat ${cls}"><div class="label">${label}</div><div class="value">${money(sum(list))}</div><div class="small muted">${list.length} חשבונות${note ? ' · ' + note : ''}</div></div>`;
+  const billRow = x => { const d = x.due ? daysBetween(today, x.due) : null;
+    const when = x.ps === 'paid' ? `שולם ${dateHe(x.b.payment.date)}` : x.due ? (d < 0 ? `באיחור ${-d} ימים` : d === 0 ? 'היום' : `בעוד ${d} ימים`) : '';
+    return `<tr class="clickable" onclick="openBillFromAlert('${x.b.id}','${x.e.id}','${x.e.projectId}')">
+      <td class="n ${PAY_CLS[x.ps]}">${x.ps === 'paid' ? dateHe(x.b.payment.date) : dateHe(x.due)}</td><td class="small ${PAY_CLS[x.ps]}">${when}</td>
+      <td>${esc(x.p?.name)}</td><td>${esc(x.e.discipline)}</td><td>${esc(x.e.company)}</td><td class="n">${esc(x.b.seq)}</td>
+      <td class="n">${esc(x.b.deal?.no || '')}</td><td class="small">${STAGE_NAMES[x.st]}</td><td class="n ${PAY_CLS[x.ps]}">${money(x.ps === 'paid' && x.b.payment.amount ? x.b.payment.amount : x.gross)}</td></tr>`; };
+  const billTable = list => list.length ? `<div class="tableWrap"><table><thead><tr><th>תאריך</th><th></th><th>פרויקט</th><th>דיסציפלינה</th><th>מתכנן</th><th>#</th><th>חשבונית עסקה</th><th>שלב</th><th>סכום כולל מע״מ</th></tr></thead><tbody>${list.map(billRow).join('')}</tbody></table></div>` : `<div class="empty">אין</div>`;
+  // צפי לפי חודשים (לפי מועד תשלום)
+  const months = []; for (let i = -1; i < 5; i++) months.push(shiftMonth(today.slice(0, 7), i));
+  const byMonth = months.map((m, i) => { const list = unpaid.filter(x => x.due && (i === 0 ? x.due.slice(0, 7) <= m : x.due.slice(0, 7) === m)); return {m, i, list, total: sum(list), late: sum(list.filter(x => x.ps === 'late'))}; });
+  const noDue = unpaid.filter(x => !x.due);
+  const maxM = Math.max(1, ...byMonth.map(x => x.total));
+  const monthRows = byMonth.map(x => `<tr><td><b>${x.i === 0 ? 'עד ' + monthLabel(x.m) + ' (כולל איחורים)' : monthLabel(x.m)}</b></td><td class="n">${x.list.length}</td>
+      <td style="width:45%"><div class="bar" style="height:12px"><i style="width:${x.total / maxM * 100}%;background:${x.late ? '#c01818' : '#1747d1'}"></i></div></td><td class="n"><b>${money(x.total)}</b>${x.late ? `<div class="small payLate">מתוכם באיחור ${money(x.late)}</div>` : ''}</td></tr>`).join('');
+  // מצב לפי פרויקט
+  const projRows = S.db.projects.map(pr => { const es = engsOf(pr.id), ss = es.map(engStats); const mine = all.filter(x => x.e.projectId === pr.id), un = mine.filter(x => x.ps !== 'paid' && x.st >= 1);
+    const fee = ss.reduce((a, x) => a + x.fee, 0), billed = ss.reduce((a, x) => a + x.billed, 0), paidN = ss.reduce((a, x) => a + x.paid, 0);
+    const na = al.filter(a => a.projectId === pr.id && a.level !== 'info').length;
+    return `<tr class="clickable" onclick="S.ptab='projects';S.projectId='${pr.id}';S.engId=null;remember();render()"><td><b>${esc(pr.name)}</b><div class="small muted">${esc(pr.client || '')}</div></td><td class="n">${es.length}</td><td class="n">${money(r2(fee))}</td>
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${Math.min(100, fee ? billed / fee * 100 : 0)}%"></i></div><span class="small">${fee ? qty(billed / fee * 100) : 0}%</span></div></td>
+      <td class="n payDone">${money(r2(paidN))}</td><td class="n">${money(sum(un))}</td><td class="n paySoon">${money(sum(un.filter(x => x.ps === 'soon')))}</td><td class="n payLate">${money(sum(un.filter(x => x.ps === 'late')))}</td><td>${na ? `<span class="badge">${na}</span>` : ''}</td></tr>`; }).join('');
+  v.innerHTML = `${foldTools()}
+    <div class="stats">
+      ${kpi('late', '⚠ באיחור תשלום', late)}
+      ${kpi('soon', `● צפוי לתשלום ב-${st.dueSoonDays} הימים הקרובים`, soon)}
+      ${kpi('', 'צפוי ב-30 הימים הבאים', in30)}
+      ${kpi('', 'ממתינים להעברה לתשלום', notTransferred)}
+      ${kpi('paid', `✓ שולם החודש (${monthLabel(today.slice(0, 7))})`, paidMonth)}
+      ${kpi('', 'שולם - חסרה חשבונית מס', noTax)}</div>
+    ${fold('d_alerts', `דורש טיפול (${al.filter(a => a.level !== 'info').length})`, alertsTable(al), {right: `היום ${dateHe(today)}`})}
+    ${fold('d_forecast', 'צפי תשלומים', `${payLegend()}
+      <h3 class="payLate">באיחור (${late.length} · ${money(sum(late))})</h3>${billTable(late)}
+      <h3 class="paySoon">בשבוע הקרוב (${soon.length} · ${money(sum(soon))})</h3>${billTable(soon)}
+      <h3>עד 30 יום (${in30.length} · ${money(sum(in30))})</h3>${billTable(in30)}
+      ${later.length ? `<h3>מאוחר יותר (${later.length} · ${money(sum(later))})</h3>${billTable(later)}` : ''}`, {right: `${unpaid.length} חשבונות פתוחים · ${money(sum(unpaid))}`})}
+    ${fold('d_months', 'צפי תשלומים לפי חודשים', `<div class="tableWrap"><table><thead><tr><th>חודש (לפי מועד תשלום)</th><th>חשבונות</th><th></th><th>סכום כולל מע״מ</th></tr></thead><tbody>${monthRows}</tbody></table></div>
+      ${noDue.length ? `<div class="small muted" style="margin-top:6px">${noDue.length} חשבונות בלי תאריך חשבונית עסקה - ללא מועד תשלום (${money(sum(noDue))}).</div>` : ''}`, {right: 'מחושב לפי תנאי התשלום של כל מתכנן'})}
+    ${fold('d_projects', 'מצב לפי פרויקט', projRows ? `<div class="tableWrap"><table><thead><tr><th>פרויקט</th><th>מתכננים</th><th>שכ״ט</th><th>חויב</th><th>שולם</th><th>פתוח לתשלום</th><th class="paySoon">השבוע</th><th class="payLate">באיחור</th><th></th></tr></thead><tbody>${projRows}</tbody></table></div>` : '<div class="empty">אין פרויקטים</div>')}
+    ${fold('d_paid', `שולמו ב-30 הימים האחרונים (${paid30.length})`, billTable(paid30), {open: false, right: money(sum(paid30))})}
+    ${!S.db.projects.length ? `<div class="card"><h2>מתחילים</h2><p>צור פרויקט בלשונית "פרויקטים ומתכננים", הוסף אליו מתכננים (אפשר לייבא מהצעת המחיר ב-PDF), ורשום חשבונות כשמגיעות חשבוניות עסקה.</p><button class="primary" onclick="S.ptab='projects';remember();render();editProject()">+ פרויקט חדש</button></div>` : ''}`;
+}
+function viewProjects(v) {
+  const p = projById(S.projectId);
+  if (!p) {
+    const cards = S.db.projects.map(x => { const es = engsOf(x.id).map(engStats); const fee = es.reduce((a, s) => a + s.fee, 0), billed = es.reduce((a, s) => a + s.billed, 0), paid = es.reduce((a, s) => a + s.paid, 0);
+      const na = projAlerts().filter(a => a.projectId === x.id && a.level !== 'info').length;
+      return `<div class="pcard" onclick="S.projectId='${x.id}';S.engId=null;remember();render()"><div class="row spread"><b>${esc(x.name)}</b>${na ? `<span class="badge">${na}</span>` : ''}</div>
+        <div class="small muted">${esc(x.client || '')}</div><div class="small" style="margin-top:6px">${es.length} מתכננים · שכ״ט ${money(r2(fee))}</div>
+        <div class="row" style="gap:6px;margin-top:4px"><div class="bar grow"><i style="width:${Math.min(100, fee ? billed / fee * 100 : 0)}%"></i></div><span class="small">${fee ? qty(billed / fee * 100) : 0}% חויב</span></div>
+        <div class="small muted">שולם ${money(r2(paid))}</div></div>`; }).join('');
+    v.innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">פרויקטים</h2><div class="row"><button onclick="importQuote()">ייבוא הצעת מחיר (PDF)</button><button class="primary" onclick="editProject()">+ פרויקט חדש</button></div></div></div>
+      ${cards ? `<div class="pgrid">${cards}</div>` : '<div class="card empty">אין פרויקטים עדיין.</div>'}`;
+    return;
+  }
+  const es = engsOf(p.id);
+  const rows = es.map(e => { const s2 = engStats(e), na = projAlerts().filter(a => a.engId === e.id && a.level !== 'info').length;
+    return `<tr class="clickable ${S.engId === e.id ? 'dup' : ''}" onclick="S.engId=(S.engId==='${e.id}'?null:'${e.id}');remember();render()" title="לחץ לפתיחה / סגירה"><td>${S.engId === e.id ? '▾' : '▸'} <b>${esc(e.discipline)}</b></td><td>${esc(e.company)}</td><td class="small">${e.feeType === 'hourly' ? 'לפי שעות' : `${(e.milestones || []).length} אבני דרך`} · ${esc(termsText(e.terms))}</td>
+      <td class="n">${money(s2.fee)}</td><td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar ${s2.pct > 100.5 ? 'over' : ''}" style="width:80px"><i style="width:${Math.min(100, s2.pct)}%"></i></div><span class="small">${qty(s2.pct)}%</span></div></td>
+      <td class="n">${money(s2.billed)}</td><td class="n">${money(s2.paid)}</td><td class="n">${money(s2.remaining)}</td><td>${s2.open ? `${s2.open} פתוחים` : ''} ${na ? `<span class="badge">${na}</span>` : ''}</td></tr>`; }).join('');
+  const tot = es.map(engStats).reduce((a, x) => ({fee: a.fee + x.fee, billed: a.billed + x.billed, paid: a.paid + x.paid}), {fee: 0, billed: 0, paid: 0});
+  const e = engById(S.engId); const eHtml = e && e.projectId === p.id ? engDetailHtml(e) : '';
+  v.innerHTML = `<div class="card"><div class="row spread"><div><a href="#" onclick="S.projectId=null;S.engId=null;remember();render();return false">← כל הפרויקטים</a><h2 style="margin:6px 0 0">${esc(p.name)}</h2><div class="small muted">${esc(p.client || '')} ${p.notes ? '· ' + esc(p.notes) : ''}</div></div>
+      <div class="row"><button class="small" onclick="editProject('${p.id}')">ערוך פרויקט</button><button onclick="importQuote('${p.id}')">ייבוא הצעת מחיר (PDF)</button><button class="primary" onclick="editEng(null,'${p.id}')">+ מתכנן</button></div></div></div>
+    ${fold('engs_' + p.id, 'מתכננים בפרויקט', `<div class="tableWrap"><table><thead><tr><th>דיסציפלינה</th><th>מתכנן / משרד</th><th>מבנה שכ״ט</th><th>שכ״ט (ללא מע״מ)</th><th>חויב</th><th>סה״כ חשבונות</th><th>שולם</th><th>יתרה</th><th>פתוח</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="9" class="empty">אין מתכננים בפרויקט. הוסף מתכנן או ייבא הצעת מחיר.</td></tr>`}
+      ${es.length ? `<tr class="total"><td colspan="3">סה״כ פרויקט</td><td class="n">${money(r2(tot.fee))}</td><td>${tot.fee ? qty(tot.billed / tot.fee * 100) : 0}%</td><td class="n">${money(r2(tot.billed))}</td><td class="n">${money(r2(tot.paid))}</td><td class="n">${money(r2(tot.fee - tot.billed))}</td><td></td></tr>` : ''}</tbody></table></div>`, {right: `${es.length} מתכננים · לחיצה על שורה פותחת / סוגרת את פרטי המתכנן`})}
+    ${eHtml}`;
+}
+function engDetailHtml(e) {
+  const s2 = engStats(e), bs = billsOf(e.id), fee = Number(e.fee) || 0;
+  const msRows = (e.milestones || []).map(m => { const c = msClaimed(e, m.id), amt = r2(fee * (m.percent || 0) / 100);
+    return `<tr><td>${esc(m.name)}</td><td class="n">${qty(m.percent)}%</td><td class="n">${money(amt)}</td>
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar ${c > 100.5 ? 'over' : ''}" style="width:90px"><i style="width:${Math.min(100, c)}%"></i></div><span class="small">${qty(c)}% מהשלב</span></div></td>
+      <td class="n">${money(r2(amt * c / 100))}</td><td class="n">${money(r2(amt * (100 - c) / 100))}</td></tr>`; }).join('');
+  const stageCell = (b, k, label) => { const x = b[k]; const done = k === 'deal' ? (x?.no || x?.date) : k === 'tax' ? x?.no : x?.date;
+    return `<td class="stage ${done ? 'done' : 'todo'}">${done ? '✓ ' : '○ '}${label}${x?.no ? ` ${esc(x.no)}` : ''}${x?.date ? `<div>${dateHe(x.date)}</div>` : ''}</td>`; };
+  const bRows = bs.map(b => { const due = dueDate(b, e), ps = payState(b, e);
+    return `<tr class="clickable" onclick="editBill('${b.id}')"><td class="n"><b>${esc(b.seq)}</b></td><td class="small">${esc(billLinesText(b, e))}</td><td class="n">${money(billNet(b))}<div class="small muted">${money(billGross(b))} כולל מע״מ</div></td>
+      ${stageCell(b, 'deal', 'חשבונית עסקה')}${stageCell(b, 'transfer', 'הועבר לתשלום')}<td class="stage ${PAY_CLS[ps]}">${ps === 'paid' ? '✓ שולם' : ps === 'late' ? `⚠ באיחור ${-daysBetween(todayIso(), due)} ימים` : ps === 'soon' ? '● לתשלום השבוע' : '○ לתשלום'}<div>${b.payment?.date ? dateHe(b.payment.date) : due ? 'עד ' + dateHe(due) : ''}</div></td>
+      ${stageCell(b, 'tax', 'חשבונית מס')}</tr>`; }).join('');
+  return `<div class="card" style="margin-top:14px"><div class="row spread"><div><h2 style="margin:0">${esc(e.discipline)} · ${esc(e.company)} <button class="small ghost" title="סגור" onclick="S.engId=null;remember();render()">✕ סגור</button></h2>
+      <div class="small muted">${e.quoteNo ? `הצעה ${esc(e.quoteNo)} · ` : ''}${e.quoteDate ? dateHe(e.quoteDate) + ' · ' : ''}${esc(termsText(e.terms))}${e.contact ? ' · ' + esc(e.contact) : ''}${e.phone ? ' · ' + esc(e.phone) : ''}${e.email ? ' · ' + esc(e.email) : ''}</div></div>
+      <div class="row"><button class="small" onclick="editEng('${e.id}')">ערוך מתכנן / הצעה</button><button class="primary" onclick="editBill(null,'${e.id}')">+ חשבון חדש (התקבלה חשבונית עסקה)</button></div></div>
+    <div class="stats"><div class="stat"><div class="label">שכר טרחה</div><div class="value">${money(s2.fee)}</div></div><div class="stat"><div class="label">חויב עד כה</div><div class="value">${money(s2.billed)}</div><div class="small muted">${qty(s2.pct)}%</div></div>
+      <div class="stat"><div class="label">הועבר לתשלום</div><div class="value">${money(s2.transferred)}</div></div><div class="stat good"><div class="label">שולם</div><div class="value">${money(s2.paid)}</div></div><div class="stat"><div class="label">יתרה לחיוב</div><div class="value">${money(s2.remaining)}</div></div></div>
+    ${e.feeType === 'hourly' ? `<div class="small">תעריף ${money(e.hourlyRate)} לשעה${e.estHours ? ` · אומדן ${qty(e.estHours)} שעות` : ''}</div>` : fold('ms_' + e.id, 'אבני דרך לתשלום', `<div class="tableWrap"><table><thead><tr><th>שלב</th><th>% משכ״ט</th><th>סכום</th><th>חויב מהשלב</th><th>חויב ₪</th><th>יתרה בשלב</th></tr></thead><tbody>${msRows || '<tr><td colspan="6" class="empty">לא הוגדרו אבני דרך</td></tr>'}</tbody></table></div>`, {inner: true, right: `${(e.milestones || []).length} שלבים`})}
+    ${(e.extras || []).length ? `<div class="small" style="margin-top:6px">תוספות: ${(e.extras || []).map(x => `${esc(x.name)} ${x.amount ? money(x.amount) : x.unit ? money(x.unit) + ' ליחידה' : ''}`).join(' · ')}</div>` : ''}
+    ${fold('bills_' + e.id, 'חשבונות', `${payLegend()}<div class="tableWrap" style="margin-top:6px"><table><thead><tr><th>#</th><th>מה חויב</th><th>סכום</th><th>1. חשבונית עסקה</th><th>2. העברה לתשלום</th><th>3. תשלום</th><th>4. חשבונית מס</th></tr></thead>
+      <tbody>${bRows || `<tr><td colspan="7" class="empty">אין חשבונות עדיין.</td></tr>`}</tbody></table></div>`, {inner: true, right: `${bs.length} חשבונות`})}</div>`;
+}
+function billLinesText(b, e) {
+  return (b.lines || []).map(l => { if (l.kind === 'ms') { const m = (e.milestones || []).find(x => x.id === l.msId); return `${qty(l.portion)}% מ"${m?.name || '?'}" (${qty(m?.percent)}%)`; }
+    if (l.kind === 'hours') return `${qty(l.hours)} שעות × ${money(l.rate)}`; return l.desc || 'תוספת'; }).join(' · ');
+}
+function viewPBills(v) {
+  const f = S.pbFilter || {status: 'open', project: ''};
+  const rows = S.db.bills.map(b => ({b, e: engById(b.engagementId)})).filter(x => x.e).map(x => ({...x, p: projById(x.e.projectId)}))
+    .filter(x => (!f.project || x.e.projectId === f.project) && (f.status === 'all' || (f.status === 'open' ? billStatus(x.b) < 4 : String(billStatus(x.b)) === f.status)))
+    .sort((a, c) => (a.b.deal?.date || '').localeCompare(c.b.deal?.date || ''));
+  const tr = rows.map(({b, e, p}) => { const due = dueDate(b, e), ps = payState(b, e);
+    return `<tr class="clickable" onclick="openBillFromAlert('${b.id}','${e.id}','${e.projectId}')"><td>${esc(p?.name)}</td><td>${esc(e.discipline)}</td><td>${esc(e.company)}</td><td class="n">${esc(b.seq)}</td>
+      <td class="n">${esc(b.deal?.no || '')}<div class="small muted">${dateHe(b.deal?.date)}</div></td><td class="n">${money(billGross(b))}</td><td class="n">${dateHe(b.transfer?.date)}</td>
+      <td class="n ${ps === 'paid' ? '' : PAY_CLS[ps]}">${dateHe(due)}</td><td class="n payDone">${dateHe(b.payment?.date)}</td><td class="n">${esc(b.tax?.no || '')}<div class="small muted">${dateHe(b.tax?.date)}</div></td>
+      <td><span class="pill ${ps === 'late' ? 'late' : ps === 'soon' ? 'soon' : ps === 'paid' ? 'paid' : 'missing'}">${ps === 'late' ? 'באיחור · ' : ps === 'soon' ? 'השבוע · ' : ''}${STAGE_NAMES[billStatus(b)]}</span></td></tr>`; }).join('');
+  const total = r2(rows.reduce((a, x) => a + billGross(x.b), 0));
+  v.innerHTML = `<div class="card"><div class="row"><h2 style="margin:0">כל החשבונות</h2>
+      <select onchange="S.pbFilter={...(S.pbFilter||{status:'open'}),project:this.value};render()"><option value="">כל הפרויקטים</option>${S.db.projects.map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <select onchange="S.pbFilter={...(S.pbFilter||{}),status:this.value};render()">${[['open', 'פתוחים'], ['1', 'ממתינים להעברה'], ['2', 'ממתינים לתשלום'], ['3', 'חסרה חשבונית מס'], ['4', 'סגורים'], ['all', 'הכל']].map(([k, t]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <span class="small muted">${rows.length} חשבונות · ${money(total)} כולל מע״מ</span><span style="margin-inline-start:auto">${payLegend()}</span></div></div>
+    <div class="tableWrap"><table><thead><tr><th>פרויקט</th><th>דיסציפלינה</th><th>מתכנן</th><th>#</th><th>חשבונית עסקה</th><th>סכום כולל מע״מ</th><th>הועבר לתשלום</th><th>לתשלום עד</th><th>שולם</th><th>חשבונית מס</th><th>סטטוס</th></tr></thead>
+    <tbody>${tr || '<tr><td colspan="11" class="empty">אין חשבונות בסינון הזה.</td></tr>'}</tbody></table></div>`;
+}
+function viewPSettings(v) {
+  const st = psettings();
+  v.innerHTML = `<div class="card"><h2>הגדרות התראות</h2><div class="form" id="psf">
+      ${fld('transferDays', 'התראה: חשבונית עסקה שלא הועברה לתשלום אחרי (ימים)', st.transferDays, {num: true})}
+      ${fld('dueSoonDays', 'התראה: מועד תשלום מתקרב - כמה ימים מראש', st.dueSoonDays, {num: true})}
+      ${fld('taxInvoiceDays', 'התראה: חשבונית מס שלא התקבלה אחרי התשלום (ימים)', st.taxInvoiceDays, {num: true})}</div>
+    <p class="small muted">מועד התשלום מחושב לכל מתכנן לפי תנאי התשלום בהצעה שלו (למשל "שוטף + 30" = סוף החודש של חשבונית העסקה + 30 יום), מתאריך חשבונית העסקה.</p>
+    <button class="primary" onclick="savePSettings()">שמור</button></div>
+    <div class="card"><h2>איך מקבלים את ההתראות</h2><p class="small">ההתראות מופיעות בלוח הבקרה ובמספר האדום על כפתור "חשבונות מתכננים בפרויקטים". הן מחושבות מחדש בכל פתיחה של האתר לפי התאריך של היום.</p></div>`;
+}
+async function savePSettings() { const x = formVals($('#psf')); S.db.settings = {...(S.db.settings || {}), alerts: {...psettings(), ...x}}; await saveDb(); toast('נשמר'); render(); }
+/* --------------------------------------------------------------- forms */
+function editProject(id) {
+  const p = id ? {...projById(id)} : {};
+  modal(id ? 'עריכת פרויקט' : 'פרויקט חדש', `<div class="form" id="prf">${fld('name', 'שם הפרויקט', p.name, {ph: 'מרכז מסחרי קרית מוצקין'})}${fld('client', 'מזמין / יזם', p.client)}${fld('code', 'מספר / קוד פרויקט', p.code, {ltr: true})}${fld('notes', 'הערות', p.notes, {wide: true})}</div>`,
+    `<button class="primary" onclick="saveProject('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteProject('${id}')">מחק פרויקט</button>` : ''));
+}
+async function saveProject(id) { const x = formVals($('#prf')); if (!x.name) return toast('חובה שם פרויקט', true); const r = upsert('projects', id ? {...projById(id), ...x} : x, 'proj'); await saveDb(); closeModal(); S.projectId = r.id; S.ptab = 'projects'; remember(); render(); return r; }
+async function deleteProject(id) {
+  const n = engsOf(id).length; if (!confirm(`למחוק את הפרויקט${n ? ` כולל ${n} מתכננים וכל החשבונות שלהם` : ''}?`)) return;
+  const eids = engsOf(id).map(e => e.id); S.db.bills = S.db.bills.filter(b => !eids.includes(b.engagementId)); S.db.engagements = S.db.engagements.filter(e => e.projectId !== id); S.db.projects = S.db.projects.filter(p => p.id !== id);
+  S.projectId = null; S.engId = null; await saveDb(); closeModal(); render();
+}
+function msRowHtml(m) { return `<tr data-ms="${esc(m.id || uid('ms'))}"><td><input data-f="name" value="${esc(m.name || '')}" style="width:100%;min-width:220px"></td><td><input data-f="percent" class="num" value="${esc(m.percent ?? '')}" style="width:70px" oninput="engFormCalc()"></td><td class="n msAmt"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
+function exRowHtml(x) { return `<tr data-ex><td><input data-f="name" value="${esc(x.name || '')}" style="width:100%;min-width:200px"></td><td><input data-f="unit" class="num" value="${esc(x.unit ?? '')}" style="width:90px" placeholder="מחיר ליחידה"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:100px" placeholder="סכום מאושר" oninput="engFormCalc()"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
+function editEng(id, projectId, prefill) {
+  const e = id ? JSON.parse(JSON.stringify(engById(id))) : {projectId, feeType: 'milestones', terms: {type: 'eom', days: 30}, milestones: [], extras: [], ...(prefill || {})};
+  const hasBills = id && billsOf(id).length;
+  modal(id ? `${e.discipline || 'מתכנן'} · ${e.company || ''}` : 'מתכנן חדש בפרויקט', `
+    <datalist id="discList">${DISCIPLINES.map(d => `<option value="${d}">`).join('')}</datalist>
+    <div class="form" id="enf">
+      ${fld('projectId', 'פרויקט', e.projectId, {type: 'select', options: S.db.projects.map(p => [p.id, p.name])})}
+      <label>דיסציפלינה<input data-k="discipline" list="discList" value="${esc(e.discipline || '')}" placeholder="אדריכלות / חשמל / מיזוג..."></label>
+      ${fld('company', 'שם המתכנן / המשרד', e.company)}${fld('contact', 'איש קשר', e.contact)}${fld('phone', 'טלפון', e.phone, {ltr: true})}${fld('email', 'דוא״ל', e.email, {ltr: true})}
+      ${fld('quoteNo', 'מס׳ הצעת מחיר', e.quoteNo, {ltr: true})}${fld('quoteDate', 'תאריך ההצעה', e.quoteDate, {type: 'date'})}
+      ${fld('feeType', 'מבנה שכר הטרחה', e.feeType, {type: 'select', options: [['milestones', 'סכום קבוע לפי אבני דרך (%)'], ['hourly', 'לפי שעות עבודה']]})}
+      ${fld('fee', 'שכר טרחה (ללא מע״מ)', e.fee, {num: true})}${fld('hourlyRate', 'תעריף לשעה (בשעות)', e.hourlyRate, {num: true})}${fld('estHours', 'אומדן שעות', e.estHours, {num: true})}
+      <label>תנאי תשלום<div class="row" style="flex-wrap:nowrap"><select id="enTermsType"><option value="eom" ${e.terms?.type === 'eom' ? 'selected' : ''}>שוטף +</option><option value="days" ${e.terms?.type === 'days' ? 'selected' : ''}>ימים מקבלת החשבונית</option></select><input id="enTermsDays" class="num" value="${esc(e.terms?.days ?? 30)}" style="width:60px"></div></label>
+      ${fld('vat', 'מע״מ %', Math.round((e.vat ?? 0.18) * 100), {num: true})}</div>
+    <h3>אבני דרך לתשלום (אחוז משכר הטרחה)</h3>
+    <div class="tableWrap"><table id="msT"><thead><tr><th>שלב</th><th>%</th><th>סכום</th><th></th></tr></thead><tbody>${(e.milestones || []).map(msRowHtml).join('')}</tbody></table></div>
+    <div class="row" style="margin-top:6px"><button class="small" onclick="document.querySelector('#msT tbody').insertAdjacentHTML('beforeend', msRowHtml({}));engFormCalc()">+ שלב</button><span id="msSum" class="small"></span></div>
+    <h3>תוספות (ביקורים נוספים, שינויים וכו׳)</h3>
+    <div class="tableWrap"><table id="exT"><thead><tr><th>תיאור</th><th>מחיר ליחידה</th><th>סכום שאושר (נכנס לשכ״ט)</th><th></th></tr></thead><tbody>${(e.extras || []).map(exRowHtml).join('')}</tbody></table></div>
+    <div class="row" style="margin-top:6px"><button class="small" onclick="document.querySelector('#exT tbody').insertAdjacentHTML('beforeend', exRowHtml({}))">+ תוספת</button></div>
+    <label style="margin-top:10px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">הערות<input id="enNotesIn" value="${esc(e.notes || '')}"></label>
+    ${e.sourceFile ? `<div class="small muted">יובא מ: ${bdi(e.sourceFile)}</div>` : ''}`,
+    `<button class="primary" onclick="saveEng('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteEng('${id}')">מחק${hasBills ? ' (כולל החשבונות)' : ''}</button>` : ''));
+  window.__engPrefill = prefill || null; engFormCalc();
+}
+function engFormCalc() {
+  const fee = Number((document.querySelector('#enf [data-k=fee]')?.value || '').replace(/,/g, '')) || 0; let sum = 0;
+  document.querySelectorAll('#msT tr[data-ms]').forEach(tr => { const p = Number(tr.querySelector('[data-f=percent]').value) || 0; sum += p; tr.querySelector('.msAmt').textContent = money(r2(fee * p / 100)); });
+  const el = $('#msSum'); if (el) el.innerHTML = document.querySelectorAll('#msT tr[data-ms]').length ? `סה״כ: <b style="color:${Math.abs(sum - 100) < 0.01 ? 'var(--good)' : 'var(--bad)'}">${qty(sum)}%</b>${Math.abs(sum - 100) < 0.01 ? '' : ' (צריך 100%)'}` : '';
+}
+async function saveEng(id) {
+  const x = formVals($('#enf')); const notesEl = $('#enNotesIn');
+  if (!x.projectId) return toast('בחר פרויקט', true); if (!x.discipline && !x.company) return toast('מלא דיסציפלינה או שם מתכנן', true);
+  const milestones = [...document.querySelectorAll('#msT tr[data-ms]')].map(tr => ({id: tr.dataset.ms, name: tr.querySelector('[data-f=name]').value.trim(), percent: Number(tr.querySelector('[data-f=percent]').value) || 0})).filter(m => m.name || m.percent);
+  const extras = [...document.querySelectorAll('#exT tr[data-ex]')].map(tr => { const g = f => tr.querySelector(`[data-f=${f}]`).value.trim(); return {name: g('name'), unit: g('unit') ? Number(g('unit').replace(/,/g, '')) : null, amount: g('amount') ? Number(g('amount').replace(/,/g, '')) : null}; }).filter(z => z.name);
+  const sum = milestones.reduce((a, m) => a + m.percent, 0);
+  if (x.feeType === 'milestones' && milestones.length && Math.abs(sum - 100) > 0.01 && !confirm(`סכום אבני הדרך הוא ${qty(sum)}% ולא 100%. לשמור בכל זאת?`)) return;
+  const pre = window.__engPrefill || {};
+  const rec = {...(id ? engById(id) : {sourceFile: pre.sourceFile || null}), ...x, notes: notesEl ? notesEl.value.trim() : x.notes, vat: (Number(x.vat) || 0) / 100, terms: {type: $('#enTermsType').value, days: Number($('#enTermsDays').value) || 0}, milestones, extras};
+  const r = upsert('engagements', rec, 'eng'); await saveDb(); closeModal(); S.projectId = r.projectId; S.engId = r.id; S.ptab = 'projects'; remember(); render(); toast('המתכנן נשמר');
+}
+async function deleteEng(id) { if (!confirm('למחוק את המתכנן וכל החשבונות שלו?')) return; S.db.bills = S.db.bills.filter(b => b.engagementId !== id); S.db.engagements = S.db.engagements.filter(e => e.id !== id); S.engId = null; await saveDb(); closeModal(); render(); }
+function importQuote(projectId) {
+  pickFile('.pdf', f => run(async () => {
+    const q = await parseQuotePdf(await f.arrayBuffer(), f.name);
+    let pid = projectId;
+    if (!pid) {
+      const guess = q.projGuess && S.db.projects.find(p => q.projGuess.includes(p.name) || p.name.includes(q.projGuess));
+      if (guess) pid = guess.id;
+      else if (S.db.projects.length === 1 && confirm(`לשייך את ההצעה לפרויקט "${S.db.projects[0].name}"?`)) pid = S.db.projects[0].id;
+      else { const name = prompt('שם הפרויקט (ייווצר פרויקט חדש):', q.projGuess || ''); if (!name) return; pid = upsert('projects', {name: name.trim()}, 'proj').id; await saveDb(); }
+    }
+    editEng(null, pid, {discipline: q.discipline, company: q.company, email: q.email, quoteNo: q.quoteNo, quoteDate: q.date, fee: q.fee, terms: q.terms || {type: 'eom', days: 30},
+      milestones: q.milestones, extras: q.extras, sourceFile: q.file, feeType: 'milestones', notes: q.subject ? 'הנדון: ' + q.subject : ''});
+    toast(`נקראה הצעת המחיר: שכ״ט ${q.fee ? money(q.fee) : 'לא נמצא'}, ${q.milestones.length} אבני דרך (${qty(q.milestonesSum)}%), ${q.terms ? termsText(q.terms) : 'תנאי תשלום לא צוינו בהצעה - הוגדר שוטף + 30'} - בדוק והשלם`);
+  }, 'קורא את הצעת המחיר…'));
+}
+/* ---- bill form */
+function editBill(id, engId) {
+  const b = id ? JSON.parse(JSON.stringify(S.db.bills.find(x => x.id === id))) : null;
+  const e = engById(b ? b.engagementId : engId); if (!e) return;
+  const bill = b || {engagementId: e.id, seq: (billsOf(e.id).reduce((a, x) => Math.max(a, Number(x.seq) || 0), 0) + 1), vat: e.vat ?? 0.18, lines: [], deal: {date: todayIso()}, transfer: {}, payment: {}, tax: {}};
+  const fee = Number(e.fee) || 0;
+  const portionOf = msId => (bill.lines.find(l => l.kind === 'ms' && l.msId === msId) || {}).portion ?? '';
+  const msRows = (e.milestones || []).map(m => { const before = msClaimed(e, m.id, bill.id), amt = r2(fee * (m.percent || 0) / 100);
+    return `<tr data-bm="${esc(m.id)}" data-amt="${amt}" data-before="${before}" data-pct="${m.percent || 0}"><td>${esc(m.name)}</td><td class="n">${qty(m.percent)}%</td><td class="n">${money(amt)}</td><td class="n">${qty(before)}%</td>
+      <td><input class="num bmP" value="${esc(portionOf(m.id))}" style="width:70px" placeholder="%" oninput="billCalc('p', this)"></td><td><input class="num bmA" style="width:100px" placeholder="₪" oninput="billCalc('a', this)"></td><td class="small bmNote"></td></tr>`; }).join('');
+  const hrs = bill.lines.find(l => l.kind === 'hours') || {}, extras = bill.lines.filter(l => l.kind === 'extra');
+  const stage = (k, n, title, fields) => `<div class="stepBox ${billStatus(bill) >= n ? 'done' : ''}" style="margin-top:8px"><h3><span class="stepNo">${n}</span>${title}</h3><div class="form">${fields}</div></div>`;
+  const dateF = (k, f, label, v) => `<label>${label}<div class="row" style="flex-wrap:nowrap"><input type="date" data-st="${k}.${f}" value="${esc(v || '')}"><button type="button" class="small ghost" onclick="this.previousElementSibling.value='${todayIso()}'">היום</button></div></label>`;
+  const txtF = (k, f, label, v, ltr) => `<label>${label}<input data-st="${k}.${f}" value="${esc(v ?? '')}" class="${ltr ? 'num' : ''}"></label>`;
+  modal(`${e.discipline || ''} · ${e.company || ''} · חשבון ${bill.seq}`, `
+    <div class="form" id="bf">${fld('seq', 'מס׳ חשבון (סידורי אצל המתכנן)', bill.seq, {ltr: true})}${fld('vatP', 'מע״מ %', Math.round((bill.vat ?? 0.18) * 100), {num: true})}</div>
+    ${e.feeType !== 'hourly' && (e.milestones || []).length ? `<h3>מה חויב בחשבון - לפי אבני הדרך (אפשר חלק משלב, למשל 50% מתוך שלב של 30%)</h3>
+      <div class="tableWrap"><table><thead><tr><th>שלב</th><th>% משכ״ט</th><th>סכום השלב</th><th>חויב קודם</th><th>% מהשלב בחשבון זה</th><th>סכום</th><th></th></tr></thead><tbody>${msRows}</tbody></table></div>` : ''}
+    ${e.feeType === 'hourly' || e.hourlyRate ? `<h3>שעות</h3><div class="form"><label>שעות<input id="bHours" class="num" value="${esc(hrs.hours ?? '')}" oninput="billCalc()"></label><label>תעריף<input id="bRate" class="num" value="${esc(hrs.rate ?? e.hourlyRate ?? '')}" oninput="billCalc()"></label></div>` : ''}
+    <h3>תוספות / אחר</h3><div class="tableWrap"><table id="bxT"><tbody>${extras.map(bxRowHtml).join('')}</tbody></table></div>
+    <button class="small" style="margin-top:6px" onclick="addBillExtraRow()">+ שורה</button>
+    <div id="bTot" style="margin-top:10px"></div>
+    <h3>מעקב שלבים</h3>
+    ${stage('deal', 1, 'התקבלה חשבונית עסקה', txtF('deal', 'no', 'מספר חשבונית עסקה', bill.deal?.no, 1) + dateF('deal', 'date', 'תאריך קבלה', bill.deal?.date))}
+    ${stage('transfer', 2, 'הועבר לתשלום', dateF('transfer', 'date', 'תאריך העברה', bill.transfer?.date) + txtF('transfer', 'to', 'הועבר אל (מזמין / גורם מאשר)', bill.transfer?.to) + txtF('transfer', 'approved', 'סכום שאושר (אם שונה)', bill.transfer?.approved, 1))}
+    ${stage('payment', 3, 'שולם', dateF('payment', 'date', 'תאריך תשלום', bill.payment?.date) + txtF('payment', 'amount', 'סכום ששולם (כולל מע״מ)', bill.payment?.amount, 1) + txtF('payment', 'ref', 'אסמכתא', bill.payment?.ref))}
+    ${stage('tax', 4, 'התקבלה חשבונית מס', txtF('tax', 'no', 'מספר חשבונית מס', bill.tax?.no, 1) + dateF('tax', 'date', 'תאריך', bill.tax?.date))}
+    <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);margin-top:10px">הערות<input id="bNotes" value="${esc(bill.notes || '')}"></label>
+    <div class="small muted" style="margin-top:6px">מועד תשלום לפי ההצעה (${esc(termsText(e.terms))}): <b id="bDue"></b></div>`,
+    `<button class="primary" onclick="saveBill('${id || ''}','${e.id}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteBill('${id}')">מחק חשבון</button>` : ''));
+  document.querySelectorAll('tr[data-bm]').forEach(tr => { if (tr.querySelector('.bmP').value !== '') billCalc('p', tr.querySelector('.bmP')); });
+  const dd = document.querySelector('[data-st="deal.date"]'); if (dd) dd.addEventListener('change', () => billCalc());
+  window.__billEng = e.id; billCalc();
+}
+function bxRowHtml(x) { return `<tr data-bx><td><input data-f="desc" value="${esc(x.desc || '')}" placeholder="למשל: ביקור נוסף באתר" style="width:100%;min-width:220px"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:110px" oninput="billCalc()"></td><td><button class="small ghost" onclick="this.closest('tr').remove();billCalc()">✕</button></td></tr>`; }
+function addBillExtraRow() { document.querySelector('#bxT tbody').insertAdjacentHTML('beforeend', bxRowHtml({})); }
+function billCalc(mode, el) {
+  if (el) { const tr = el.closest('tr'), amt = Number(tr.dataset.amt) || 0, before = Number(tr.dataset.before) || 0; const P = tr.querySelector('.bmP'), A = tr.querySelector('.bmA');
+    if (mode === 'p') { const p = Number(P.value) || 0; A.value = P.value === '' ? '' : r2(amt * p / 100); } else { const a = Number(A.value.replace(/,/g, '')) || 0; P.value = A.value === '' ? '' : r2(amt ? a / amt * 100 : 0); }
+    const p = Number(P.value) || 0, after = r2(before + p);
+    tr.querySelector('.bmNote').innerHTML = P.value === '' ? '' : `<span style="color:${after > 100.5 ? 'var(--bad)' : 'var(--muted)'}">אחרי החשבון: ${qty(after)}% מהשלב = ${qty(r2(p * (Number(tr.dataset.pct) || 0) / 100))}% משכ״ט</span>`; }
+  const lines = collectBillLines(); const net = r2(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0)); const vat = (Number(document.querySelector('#bf [data-k=vatP]')?.value) || 0) / 100;
+  const e = engById(window.__billEng); const el2 = $('#bTot'); if (el2) el2.innerHTML = `<div class="row"><span>סה״כ ללא מע״מ: <b>${money(net)}</b></span><span>מע״מ: ${money(r2(net * vat))}</span><span>סה״כ לתשלום: <b>${money(r2(net * (1 + vat)))}</b></span></div>`;
+  const d = document.querySelector('[data-st="deal.date"]')?.value; const due = $('#bDue'); if (due) due.textContent = d && e ? dateHe(dueDate({deal: {date: d}}, e)) : '—';
+}
+function collectBillLines() {
+  const lines = [];
+  document.querySelectorAll('tr[data-bm]').forEach(tr => { const p = tr.querySelector('.bmP').value, a = tr.querySelector('.bmA').value; if (p !== '' && Number(p)) lines.push({kind: 'ms', msId: tr.dataset.bm, portion: Number(p), amount: Number(String(a).replace(/,/g, '')) || 0}); });
+  const h = $('#bHours'), rt = $('#bRate'); if (h && h.value) lines.push({kind: 'hours', hours: Number(h.value), rate: Number(rt.value) || 0, amount: r2(Number(h.value) * (Number(rt.value) || 0))});
+  document.querySelectorAll('#bxT tr[data-bx]').forEach(tr => { const d = tr.querySelector('[data-f=desc]').value.trim(), a = tr.querySelector('[data-f=amount]').value; if (d || a) lines.push({kind: 'extra', desc: d, amount: Number(String(a).replace(/,/g, '')) || 0}); });
+  return lines;
+}
+async function saveBill(id, engId) {
+  const lines = collectBillLines(); if (!lines.length) return toast('לא הוזן מה חויב בחשבון', true);
+  const x = formVals($('#bf')); const st = {deal: {}, transfer: {}, payment: {}, tax: {}};
+  document.querySelectorAll('[data-st]').forEach(el => { const [k, f] = el.dataset.st.split('.'); const v = el.value.trim(); st[k][f] = v === '' ? null : (['amount', 'approved'].includes(f) ? Number(v.replace(/,/g, '')) : v); });
+  if (st.payment.date && !st.transfer.date) st.transfer.date = st.payment.date;   // שולם => הועבר
+  const e = engById(engId);
+  for (const l of lines.filter(l => l.kind === 'ms')) { const m = e.milestones.find(z => z.id === l.msId); const after = msClaimed(e, l.msId, id || null) + l.portion; if (after > 100.5 && !confirm(`השלב "${m?.name}" יחויב ב-${qty(after)}% (מעל 100%). לשמור בכל זאת?`)) return; }
+  const old = id ? S.db.bills.find(b => b.id === id) : {};
+  upsert('bills', {...old, engagementId: engId, seq: x.seq, vat: (Number(x.vatP) || 0) / 100, lines, ...st, notes: $('#bNotes').value.trim()}, 'bill');
+  await saveDb(); closeModal(); render(); toast(`החשבון נשמר · ${STAGE_NAMES[billStatus({...st})]}`);
+}
+async function deleteBill(id) { if (!confirm('למחוק את החשבון?')) return; S.db.bills = S.db.bills.filter(b => b.id !== id); await saveDb(); closeModal(); render(); }
+
+/* ===================================================================== boot */
+(async function boot() {
+  try { await idb.open(); } catch (e) { S.idbOk = false; }
+  try { const d = await idb.get('db'); if (d) S.db = dbFrom(d); } catch (e) {}
+  try { const h = await idb.get('root'); if (h) { S.root = h; S.rootPerm = await checkPerm(h, false); if (S.rootPerm === 'granted') await maybeLoadDataFile(); } } catch (e) {}
+  if (!window.XLSX || !window.JSZip || !window.PDFLib) toast('חלק מהרכיבים לא נטענו - בדוק חיבור לאינטרנט ורענן את הדף.', true);
+  if (S.personId && !personById(S.personId)) S.personId = null;
+  render();
+})();
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+window.__atlas = {parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
+</script>
+</body>
+</html>
