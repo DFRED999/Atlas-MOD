@@ -1068,6 +1068,19 @@ function labelTables(root) {
 }
 new MutationObserver(() => { clearTimeout(labelTables._t); labelTables._t = setTimeout(() => labelTables(), 30); }).observe(document.body, {childList: true, subtree: true});
 const isMobile = () => window.matchMedia('(max-width: 700px)').matches || !('showDirectoryPicker' in window) && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+/* ---- מחיקה: תמיד אישור כפול ---- */
+function confirmDelete(msg) {
+  if (!confirm(msg)) return false;
+  const t = prompt('אישור שני - הפעולה אינה הפיכה.\nכדי לאשר הקלד את המילה: מחק');
+  if (t === null) return false;
+  if (t.trim() !== 'מחק') { toast('המחיקה בוטלה - לא הוקלד "מחק"', true); return false; }
+  return true;
+}
+function rmRow(btn, after) {
+  const tr = btn.closest('tr'); const has = [...tr.querySelectorAll('input,select')].some(i => String(i.value || '').trim() !== '');
+  if (has && !confirmDelete('למחוק את השורה?')) return;
+  tr.remove(); modalDirty = true; if (after) after();
+}
 let modalDirty = false;
 function modal(title, body, actions) { modalDirty = false; $('#modalRoot').innerHTML = `<div class="modalBg" onmousedown="window.__bgDown=(event.target===this)" onclick="if(event.target===this&&window.__bgDown)tryCloseModal()"><div class="modal"><h2>${esc(title)}</h2>${body}<div class="actions">${actions}</div></div></div>`; }
 function closeModal() { modalDirty = false; $('#modalRoot').innerHTML = ''; if (rerenderPending) { rerenderPending = false; render(); } }
@@ -1148,7 +1161,7 @@ async function setModLock() {
   await saveDb(); toast('🔒 הקוד נשמר - הגשת החשבונות נעולה בכל המכשירים'); render();
 }
 async function removeModLock() {
-  if (!confirm('להסיר את הנעילה? כל מי שפותח את האתר יוכל להיכנס להגשת החשבונות.')) return;
+  if (!confirmDelete('להסיר את הנעילה? כל מי שפותח את האתר יוכל להיכנס להגשת החשבונות.')) return;
   const st = {...(S.db.settings || {})}; delete st.modLock; st.updatedAt = new Date().toISOString(); S.db.settings = st; await saveDb(); toast('הנעילה הוסרה'); render();
 }
 function lockCard() {
@@ -1221,7 +1234,7 @@ async function savePerson(id) {
   upsert('people', id ? {...personById(id), ...vals} : vals, 'person'); await saveDb(); closeModal(); toast('העובד נשמר'); render();
 }
 async function deleteRec(list, id) {
-  if (!confirm('למחוק? הקבצים בתיקיות לא נמחקים.')) return;
+  if (!confirmDelete('למחוק? הקבצים בתיקיות לא נמחקים.')) return;
   removeRecs(list, x => x.id === id); await saveDb(); closeModal(); render();
 }
 function importPersonFromReport() {
@@ -1256,7 +1269,7 @@ function orderLineRow(l) {
   return `<tr data-line>${'<td>' + inp('itemNo', l.itemNo, 50) + '</td>'}
     <td><select data-f="type"><option value="hours" ${l.type === 'hours' ? 'selected' : ''}>שעות</option><option value="km" ${l.type === 'km' ? 'selected' : ''}>ק״מ</option></select></td>
     <td>${inp('from', l.from, 130, 'date')}</td><td>${inp('to', l.to, 130, 'date')}</td><td>${inp('rate', l.rate, 70)}</td><td>${inp('qty', l.qty, 80)}</td><td>${inp('budget', l.budget, 100)}</td>
-    <td>${inp('dailyKm', l.dailyKm, 60)}</td><td>${inp('monthlyHours', l.monthlyHours, 60)}</td><td><button class="small ghost" onclick="this.closest('tr').remove()">✕</button></td></tr>`;
+    <td>${inp('dailyKm', l.dailyKm, 60)}</td><td>${inp('monthlyHours', l.monthlyHours, 60)}</td><td><button class="small ghost" onclick="rmRow(this)">✕</button></td></tr>`;
 }
 function editOrder(id, prefill) {
   const o = id ? JSON.parse(JSON.stringify(orderById(id))) : {personId: S.personId, lines: [{itemNo: '10', type: 'hours'}, {itemNo: '20', type: 'km', rate: 1.4}], ...(prefill || {})};
@@ -1776,7 +1789,7 @@ function exportBackup() { download(JSON.stringify({schema: 'atlas-mod', version:
 async function restoreBackup(f) {
   let d; try { d = JSON.parse(await f.text()); } catch (e) { return toast('קובץ לא תקין', true); }
   if (d.schema !== 'atlas-mod') return toast('קובץ הגיבוי אינו של ATLAS MOD', true);
-  if (!confirm(`לשחזר ${d.people?.length || 0} עובדים, ${d.orders?.length || 0} הזמנות, ${d.reports?.length || 0} שיוכים, ${d.projects?.length || 0} פרויקטים, ${d.bills?.length || 0} חשבונות מתכננים? הנתונים הנוכחיים יוחלפו.`)) return;
+  if (!confirmDelete(`לשחזר ${d.people?.length || 0} עובדים, ${d.orders?.length || 0} הזמנות, ${d.reports?.length || 0} שיוכים, ${d.projects?.length || 0} פרויקטים, ${d.bills?.length || 0} חשבונות מתכננים? הנתונים הנוכחיים יוחלפו.`)) return;
   exportBackup(); S.db = dbFrom(d); await saveDb(); render(); toast('שוחזר');
 }
 
@@ -2064,11 +2077,11 @@ function editProject(id) {
 }
 async function saveProject(id) { const x = formVals($('#prf')); if (!x.name) return toast('חובה שם פרויקט', true); const r = upsert('projects', id ? {...projById(id), ...x} : x, 'proj'); await saveDb(); closeModal(); S.projectId = r.id; S.ptab = 'projects'; remember(); render(); return r; }
 async function deleteProject(id) {
-  const n = engsOf(id).length; if (!confirm(`למחוק את הפרויקט${n ? ` כולל ${n} מתכננים וכל החשבונות שלהם` : ''}?`)) return;
+  const n = engsOf(id).length; if (!confirmDelete(`למחוק את הפרויקט${n ? ` כולל ${n} מתכננים וכל החשבונות שלהם` : ''}?`)) return;
   const eids = engsOf(id).map(e => e.id); removeRecs('bills', b => eids.includes(b.engagementId)); removeRecs('engagements', e => e.projectId === id); removeRecs('projects', p => p.id === id);
   S.projectId = null; S.engId = null; await saveDb(); closeModal(); render();
 }
-function msRowHtml(m) { return `<tr data-ms="${esc(m.id || uid('ms'))}"><td><input data-f="name" value="${esc(m.name || '')}" style="width:100%;min-width:220px"></td><td><input data-f="percent" class="num" value="${esc(m.percent ?? '')}" style="width:70px" oninput="engFormCalc()"></td><td><input class="num msAmt" style="width:110px" placeholder="₪" oninput="msAmtInput(this)"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
+function msRowHtml(m) { return `<tr data-ms="${esc(m.id || uid('ms'))}"><td><input data-f="name" value="${esc(m.name || '')}" style="width:100%;min-width:220px"></td><td><input data-f="percent" class="num" value="${esc(m.percent ?? '')}" style="width:70px" oninput="engFormCalc()"></td><td><input class="num msAmt" style="width:110px" placeholder="₪" oninput="msAmtInput(this)"></td><td><button class="small ghost" onclick="rmRow(this,engFormCalc)">✕</button></td></tr>`; }
 // הקלדת סכום לשלב => האחוז מחושב לבד מתוך שכר הטרחה
 function msAmtInput(el) {
   const fee = Number((document.querySelector('#enf [data-k=fee]')?.value || '').replace(/,/g, '')) || 0, P = el.closest('tr').querySelector('[data-f=percent]');
@@ -2078,7 +2091,7 @@ function msAmtInput(el) {
   else if (!isNaN(a)) P.value = Math.round(a / fee * 100 * 1e6) / 1e6;
   engFormCalc(el);
 }
-function exRowHtml(x) { return `<tr data-ex><td><input data-f="name" value="${esc(x.name || '')}" style="width:100%;min-width:200px"></td><td><input data-f="unit" class="num" value="${esc(x.unit ?? '')}" style="width:90px" placeholder="מחיר ליחידה"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:100px" placeholder="סכום מאושר" oninput="engFormCalc()"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
+function exRowHtml(x) { return `<tr data-ex><td><input data-f="name" value="${esc(x.name || '')}" style="width:100%;min-width:200px"></td><td><input data-f="unit" class="num" value="${esc(x.unit ?? '')}" style="width:90px" placeholder="מחיר ליחידה"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:100px" placeholder="סכום מאושר" oninput="engFormCalc()"></td><td><button class="small ghost" onclick="rmRow(this,engFormCalc)">✕</button></td></tr>`; }
 function editEng(id, projectId, prefill) {
   const e = id ? JSON.parse(JSON.stringify(engById(id))) : {projectId, feeType: 'milestones', terms: {type: 'eom', days: 30}, milestones: [], extras: [], ...(prefill || {})};
   const hasBills = id && billsOf(id).length;
@@ -2121,7 +2134,7 @@ async function saveEng(id) {
   const rec = {...(id ? engById(id) : {sourceFile: pre.sourceFile || null}), ...x, notes: notesEl ? notesEl.value.trim() : x.notes, vat: (Number(x.vat) || 0) / 100, terms: {type: $('#enTermsType').value, days: Number($('#enTermsDays').value) || 0}, milestones, extras};
   const r = upsert('engagements', rec, 'eng'); await saveDb(); closeModal(); S.projectId = r.projectId; S.engId = r.id; S.ptab = 'projects'; remember(); render(); toast('המתכנן נשמר');
 }
-async function deleteEng(id) { if (!confirm('למחוק את המתכנן וכל החשבונות שלו?')) return; removeRecs('bills', b => b.engagementId === id); removeRecs('engagements', e => e.id === id); S.engId = null; await saveDb(); closeModal(); render(); }
+async function deleteEng(id) { if (!confirmDelete('למחוק את המתכנן וכל החשבונות שלו?')) return; removeRecs('bills', b => b.engagementId === id); removeRecs('engagements', e => e.id === id); S.engId = null; await saveDb(); closeModal(); render(); }
 function importQuote(projectId) {
   pickFile('.pdf', f => run(async () => {
     const q = await parseQuotePdf(await f.arrayBuffer(), f.name);
@@ -2171,7 +2184,7 @@ function editBill(id, engId) {
   const dd = document.querySelector('[data-st="deal.date"]'); if (dd) dd.addEventListener('change', () => billCalc());
   window.__billEng = e.id; billCalc();
 }
-function bxRowHtml(x) { return `<tr data-bx><td><input data-f="desc" value="${esc(x.desc || '')}" placeholder="למשל: ביקור נוסף באתר" style="width:100%;min-width:220px"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:110px" oninput="billCalc()"></td><td><button class="small ghost" onclick="this.closest('tr').remove();billCalc()">✕</button></td></tr>`; }
+function bxRowHtml(x) { return `<tr data-bx><td><input data-f="desc" value="${esc(x.desc || '')}" placeholder="למשל: ביקור נוסף באתר" style="width:100%;min-width:220px"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:110px" oninput="billCalc()"></td><td><button class="small ghost" onclick="rmRow(this,billCalc)">✕</button></td></tr>`; }
 function addBillExtraRow() { document.querySelector('#bxT tbody').insertAdjacentHTML('beforeend', bxRowHtml({})); }
 function billCalc(mode, el) {
   if (el) { const tr = el.closest('tr'), amt = Number(tr.dataset.amt) || 0, before = Number(tr.dataset.before) || 0; const P = tr.querySelector('.bmP'), A = tr.querySelector('.bmA');
@@ -2200,7 +2213,7 @@ async function saveBill(id, engId) {
   upsert('bills', {...old, engagementId: engId, seq: x.seq, vat: (Number(x.vatP) || 0) / 100, lines, ...st, notes: $('#bNotes').value.trim()}, 'bill');
   await saveDb(); closeModal(); render(); toast(`החשבון נשמר · ${STAGE_NAMES[billStatus({...st})]}`);
 }
-async function deleteBill(id) { if (!confirm('למחוק את החשבון?')) return; removeRecs('bills', b => b.id === id); await saveDb(); closeModal(); render(); }
+async function deleteBill(id) { if (!confirmDelete('למחוק את החשבון?')) return; removeRecs('bills', b => b.id === id); await saveDb(); closeModal(); render(); }
 
 /* ===================================================================== boot */
 (async function boot() {
