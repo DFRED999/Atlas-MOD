@@ -129,6 +129,46 @@
   .pcard:hover{border-color:var(--accent);}
   .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
   @media (max-width:800px){ .grid2{grid-template-columns:1fr;} main{padding:12px;} header.top{padding:12px;} nav.tabs{padding:10px 12px 0;} }
+  @media (max-width:700px){
+    body{font-size:14px;}
+    header.top{padding:10px 12px;gap:6px;} header.top h1{font-size:16px;} header.top .sub{display:none;}
+    .chips{gap:4px;} .chip{font-size:11px;padding:2px 8px;}
+    nav.tabs{flex-wrap:nowrap;overflow-x:auto;padding:8px 10px 2px;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+    nav.tabs::-webkit-scrollbar{display:none;}
+    nav.tabs button{white-space:nowrap;flex:none;padding:8px 14px;}
+    .modSwitch{flex:none;margin-inline-end:4px;} .modSwitch button{white-space:nowrap;padding:8px 12px;}
+    main{padding:10px;}
+    .card{padding:12px;}
+    .stats{grid-template-columns:1fr 1fr;gap:8px;} .stat{padding:9px 10px;} .stat .value{font-size:16px;} .stat .label{font-size:11px;}
+    button{min-height:38px;} button.small{min-height:32px;}
+    input,select{font-size:16px;min-height:38px;}
+    .row{gap:8px;}
+    .pgrid{grid-template-columns:1fr;}
+    details.fold > summary{padding:12px;} details.fold > .foldBody{padding:0 10px 12px;}
+    .modalBg{padding:0;align-items:stretch;} .modal{border-radius:0;min-height:100vh;padding:14px 12px 90px;max-width:none;}
+    .modal .actions{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);padding:10px 12px;margin:0;z-index:5;}
+    .modal .actions button{flex:1;} .modal .actions button.danger{flex:none;}
+    #toast{left:10px;right:10px;bottom:10px;max-width:none;text-align:center;}
+    .form{grid-template-columns:1fr;}
+    /* טבלאות -> כרטיסים */
+    .tableWrap:has(table.rtable){border:none;background:transparent;overflow:visible;}
+    table.rtable, table.rtable tbody, table.rtable tr, table.rtable td{display:block;width:100%;}
+    table.rtable thead{display:none;}
+    table.rtable tr{background:var(--paper-2);border:1px solid var(--line);border-radius:8px;margin:0 0 8px;padding:6px 12px;}
+    table.rtable tr.total{background:var(--head);border-width:2px;border-color:var(--ink);}
+    table.rtable td{display:flex;justify-content:space-between;align-items:center;gap:12px;border:none;padding:5px 0;text-align:left;min-height:0;}
+    table.rtable td.n{direction:rtl;text-align:left;}
+    table.rtable td::before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:600;text-align:right;flex:none;max-width:48%;}
+    table.rtable td[data-label=""]::before{display:none;}
+    table.rtable td:empty{display:none;}
+    table.rtable td .bar{flex:1;}
+    table.rtable td > .row{justify-content:flex-end;}
+    table.rtable td.empty{display:block;text-align:center;}
+    .alertRow td{display:block;} .alertRow td:first-child{display:none;}
+    .alertRow{display:block;border-inline-start:5px solid var(--warn);padding:8px 10px;} .alertRow.bad{border-inline-start-color:var(--bad);} .alertRow.info{border-inline-start-color:#8aa0c8;}
+    .alertRow td{padding:2px 0;border:none;} .alertRow td:last-child{display:none;}
+    .legend{font-size:11.5px;gap:10px;}
+  }
 </style>
 </head>
 <body>
@@ -695,7 +735,7 @@ const idb = {
 
 /* ===================================================================== state */
 const S = {module: 'mod', tab: 'report', ptab: 'pdash', projectId: null, engId: null, month: null, personId: null, db: {people: [], orders: [], reports: [], projects: [], engagements: [], bills: [], settings: {}}, root: null, rootPerm: 'none', scan: null, prep: null, idbOk: true};
-try { const s = JSON.parse(localStorage.getItem('atlasmod.ui') || '{}'); Object.assign(S, {module: s.module || 'mod', tab: s.tab || 'report', ptab: s.ptab || 'pdash', projectId: s.projectId || null, engId: s.engId || null, month: s.month || null, personId: s.personId || null}); } catch (e) {}
+try { const s = JSON.parse(localStorage.getItem('atlasmod.ui') || '{}'); Object.assign(S, {module: s.module || (!('showDirectoryPicker' in window) ? 'proj' : 'mod'), tab: s.tab || 'report', ptab: s.ptab || 'pdash', projectId: s.projectId || null, engId: s.engId || null, month: s.month || null, personId: s.personId || null}); } catch (e) {}
 if (!S.month) { const d = new Date(); d.setMonth(d.getMonth() - 1); S.month = d.toISOString().slice(0, 7); }
 function remember() { try { localStorage.setItem('atlasmod.ui', JSON.stringify({module: S.module, tab: S.tab, ptab: S.ptab, projectId: S.projectId, engId: S.engId, month: S.month, personId: S.personId})); } catch (e) {} }
 const people = () => S.db.people.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he'));
@@ -1009,6 +1049,14 @@ async function prepareInvoice(opts) {
 }
 
 /* ===================================================================== modal + form helpers */
+function labelTables(root) {
+  (root || document).querySelectorAll('table.rtable').forEach(t => {
+    const hs = [...t.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    t.querySelectorAll('tbody tr').forEach(tr => { let col = 0; [...tr.children].forEach(td => { if (!td.hasAttribute('data-label')) td.setAttribute('data-label', td.colSpan > 1 ? '' : (hs[col] || '')); col += td.colSpan || 1; }); });
+  });
+}
+new MutationObserver(() => { clearTimeout(labelTables._t); labelTables._t = setTimeout(() => labelTables(), 30); }).observe(document.body, {childList: true, subtree: true});
+const isMobile = () => window.matchMedia('(max-width: 700px)').matches || !('showDirectoryPicker' in window) && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 function modal(title, body, actions) { $('#modalRoot').innerHTML = `<div class="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal"><h2>${esc(title)}</h2>${body}<div class="actions">${actions}</div></div></div>`; }
 function closeModal() { $('#modalRoot').innerHTML = ''; if (rerenderPending) { rerenderPending = false; render(); } }
 function formVals(root) {
@@ -1039,7 +1087,8 @@ function download(bytes, name, type) { const a = document.createElement('a'); a.
 const TABS = [['report', 'דיווח והכנת חיוב'], ['produce', 'הפקת חשבון'], ['summary', 'ריכוז חודשי'], ['people', 'עובדים'], ['orders', 'הזמנות'], ['tools', 'הגדרות וגיבוי']];
 function renderChips() {
   let h = '';
-  if (!fsSupported()) h += `<span class="chip bad">✗ הדפדפן לא תומך בתיקיות - השתמש ב-Chrome / Edge</span>`;
+  if (!fsSupported()) h += S.module === 'proj' ? '' : `<span class="chip bad">✗ הגשת חשבונות משהב״ט - מהמחשב בלבד</span>`;
+  else if (S.module === 'proj' && isMobile()) h += '';
   else if (!S.root) h += `<button class="chip warn" onclick="pickRoot()">בחר תיקיית בסיס</button>`;
   else if (S.rootPerm !== 'granted') h += `<button class="chip warn" onclick="grantRoot()">🔒 אשר גישה לתיקיות (${esc(S.root.name)})</button>`;
   else h += `<span class="chip good">✓ תיקיית בסיס: ${esc(S.root.name)}</span>`;
@@ -1055,6 +1104,7 @@ function render() {
   const modSwitch = `<div class="modSwitch"><button class="${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">הגשת חשבונות משהב״ט</button><button class="${S.module === 'proj' ? 'on' : ''}" onclick="setModule('proj')">חשבונות מתכננים בפרויקטים${nAl ? ` <span class="badge">${nAl}</span>` : ''}</button></div>`;
   if (S.module === 'proj') { $('#tabs').innerHTML = modSwitch + PTABS.map(([k, t]) => `<button class="${S.ptab === k ? 'active' : ''}" onclick="S.ptab='${k}';remember();render()">${t}</button>`).join(''); return renderProj($('#view')); }
   $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => `<button class="${S.tab === k ? 'active' : ''}" onclick="S.tab='${k}';remember();render()">${t}</button>`).join('');
+  if (!fsSupported() && !['people', 'orders', 'tools'].includes(S.tab)) { $('#view').innerHTML = `<div class="card"><h2>📱 הגשת חשבונות משהב״ט - מהמחשב בלבד</h2><p>החלק הזה קורא ושומר קבצים בתיקיות העובדים (דוחות שעות, חשבונות Excel ו-PDF), ולכן עובד רק במחשב בדפדפן Chrome או Edge.</p><p>בנייד אפשר לצפות ב<b>עובדים</b> וב<b>הזמנות</b>, ולעבוד באופן מלא על <b>חשבונות מתכננים בפרויקטים</b>.</p><button class="primary" onclick="setModule('proj')">מעבר לחשבונות מתכננים בפרויקטים</button></div>`; return; }
   const v = $('#view');
   if (fsSupported() && (!S.root || S.rootPerm !== 'granted') && !['people', 'orders', 'tools'].includes(S.tab)) {
     v.innerHTML = rootGate(); return;
@@ -1807,7 +1857,7 @@ function viewPDash(v) {
       <td class="n ${PAY_CLS[x.ps]}">${x.ps === 'paid' ? dateHe(x.b.payment.date) : dateHe(x.due)}</td><td class="small ${PAY_CLS[x.ps]}">${when}</td>
       <td>${esc(x.p?.name)}</td><td>${esc(x.e.discipline)}</td><td>${esc(x.e.company)}</td><td class="n">${esc(x.b.seq)}</td>
       <td class="n">${esc(x.b.deal?.no || '')}</td><td class="small">${STAGE_NAMES[x.st]}</td><td class="n ${PAY_CLS[x.ps]}">${money(x.ps === 'paid' && x.b.payment.amount ? x.b.payment.amount : x.gross)}</td></tr>`; };
-  const billTable = list => list.length ? `<div class="tableWrap"><table><thead><tr><th>תאריך</th><th></th><th>פרויקט</th><th>דיסציפלינה</th><th>מתכנן</th><th>#</th><th>חשבונית עסקה</th><th>שלב</th><th>סכום כולל מע״מ</th></tr></thead><tbody>${list.map(billRow).join('')}</tbody></table></div>` : `<div class="empty">אין</div>`;
+  const billTable = list => list.length ? `<div class="tableWrap"><table class="rtable"><thead><tr><th>תאריך</th><th>מתי</th><th>פרויקט</th><th>דיסציפלינה</th><th>מתכנן</th><th>#</th><th>חשבונית עסקה</th><th>שלב</th><th>סכום כולל מע״מ</th></tr></thead><tbody>${list.map(billRow).join('')}</tbody></table></div>` : `<div class="empty">אין</div>`;
   // צפי לפי חודשים (לפי מועד תשלום)
   const months = []; for (let i = -1; i < 5; i++) months.push(shiftMonth(today.slice(0, 7), i));
   const byMonth = months.map((m, i) => { const list = unpaid.filter(x => x.due && (i === 0 ? x.due.slice(0, 7) <= m : x.due.slice(0, 7) === m)); return {m, i, list, total: sum(list), late: sum(list.filter(x => x.ps === 'late'))}; });
@@ -1821,7 +1871,7 @@ function viewPDash(v) {
     const na = al.filter(a => a.projectId === pr.id && a.level !== 'info').length;
     return `<tr class="clickable" onclick="S.ptab='projects';S.projectId='${pr.id}';S.engId=null;remember();render()"><td><b>${esc(pr.name)}</b><div class="small muted">${esc(pr.client || '')}</div></td><td class="n">${es.length}</td><td class="n">${money(r2(fee))}</td>
       <td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${Math.min(100, fee ? billed / fee * 100 : 0)}%"></i></div><span class="small">${fee ? qty(billed / fee * 100) : 0}%</span></div></td>
-      <td class="n payDone">${money(r2(paidN))}</td><td class="n">${money(sum(un))}</td><td class="n paySoon">${money(sum(un.filter(x => x.ps === 'soon')))}</td><td class="n payLate">${money(sum(un.filter(x => x.ps === 'late')))}</td><td>${na ? `<span class="badge">${na}</span>` : ''}</td></tr>`; }).join('');
+      <td class="n payDone">${money(r2(paidN))}</td><td class="n">${money(sum(un))}</td><td class="n paySoon">${money(sum(un.filter(x => x.ps === 'soon')))}</td><td class="n payLate">${money(sum(un.filter(x => x.ps === 'late')))}</td><td data-label="התראות">${na ? `<span class="badge">${na}</span>` : ''}</td></tr>`; }).join('');
   v.innerHTML = `${foldTools()}
     <div class="stats">
       ${kpi('late', '⚠ באיחור תשלום', late)}
@@ -1836,9 +1886,9 @@ function viewPDash(v) {
       <h3 class="paySoon">בשבוע הקרוב (${soon.length} · ${money(sum(soon))})</h3>${billTable(soon)}
       <h3>עד 30 יום (${in30.length} · ${money(sum(in30))})</h3>${billTable(in30)}
       ${later.length ? `<h3>מאוחר יותר (${later.length} · ${money(sum(later))})</h3>${billTable(later)}` : ''}`, {right: `${unpaid.length} חשבונות פתוחים · ${money(sum(unpaid))}`})}
-    ${fold('d_months', 'צפי תשלומים לפי חודשים', `<div class="tableWrap"><table><thead><tr><th>חודש (לפי מועד תשלום)</th><th>חשבונות</th><th></th><th>סכום כולל מע״מ</th></tr></thead><tbody>${monthRows}</tbody></table></div>
+    ${fold('d_months', 'צפי תשלומים לפי חודשים', `<div class="tableWrap"><table class="rtable"><thead><tr><th>חודש (לפי מועד תשלום)</th><th>חשבונות</th><th></th><th>סכום כולל מע״מ</th></tr></thead><tbody>${monthRows}</tbody></table></div>
       ${noDue.length ? `<div class="small muted" style="margin-top:6px">${noDue.length} חשבונות בלי תאריך חשבונית עסקה - ללא מועד תשלום (${money(sum(noDue))}).</div>` : ''}`, {right: 'מחושב לפי תנאי התשלום של כל מתכנן'})}
-    ${fold('d_projects', 'מצב לפי פרויקט', projRows ? `<div class="tableWrap"><table><thead><tr><th>פרויקט</th><th>מתכננים</th><th>שכ״ט</th><th>חויב</th><th>שולם</th><th>פתוח לתשלום</th><th class="paySoon">השבוע</th><th class="payLate">באיחור</th><th></th></tr></thead><tbody>${projRows}</tbody></table></div>` : '<div class="empty">אין פרויקטים</div>')}
+    ${fold('d_projects', 'מצב לפי פרויקט', projRows ? `<div class="tableWrap"><table class="rtable"><thead><tr><th>פרויקט</th><th>מתכננים</th><th>שכ״ט</th><th>חויב</th><th>שולם</th><th>פתוח לתשלום</th><th class="paySoon">השבוע</th><th class="payLate">באיחור</th><th></th></tr></thead><tbody>${projRows}</tbody></table></div>` : '<div class="empty">אין פרויקטים</div>')}
     ${fold('d_paid', `שולמו ב-30 הימים האחרונים (${paid30.length})`, billTable(paid30), {open: false, right: money(sum(paid30))})}
     ${!S.db.projects.length ? `<div class="card"><h2>מתחילים</h2><p>צור פרויקט בלשונית "פרויקטים ומתכננים", הוסף אליו מתכננים (אפשר לייבא מהצעת המחיר ב-PDF), ורשום חשבונות כשמגיעות חשבוניות עסקה.</p><button class="primary" onclick="S.ptab='projects';remember();render();editProject()">+ פרויקט חדש</button></div>` : ''}`;
 }
@@ -1864,7 +1914,7 @@ function viewProjects(v) {
   const e = engById(S.engId); const eHtml = e && e.projectId === p.id ? engDetailHtml(e) : '';
   v.innerHTML = `<div class="card"><div class="row spread"><div><a href="#" onclick="S.projectId=null;S.engId=null;remember();render();return false">← כל הפרויקטים</a><h2 style="margin:6px 0 0">${esc(p.name)}</h2><div class="small muted">${esc(p.client || '')} ${p.notes ? '· ' + esc(p.notes) : ''}</div></div>
       <div class="row"><button class="small" onclick="editProject('${p.id}')">ערוך פרויקט</button><button onclick="importQuote('${p.id}')">ייבוא הצעת מחיר (PDF)</button><button class="primary" onclick="editEng(null,'${p.id}')">+ מתכנן</button></div></div></div>
-    ${fold('engs_' + p.id, 'מתכננים בפרויקט', `<div class="tableWrap"><table><thead><tr><th>דיסציפלינה</th><th>מתכנן / משרד</th><th>מבנה שכ״ט</th><th>שכ״ט (ללא מע״מ)</th><th>חויב</th><th>סה״כ חשבונות</th><th>שולם</th><th>יתרה</th><th>פתוח</th></tr></thead>
+    ${fold('engs_' + p.id, 'מתכננים בפרויקט', `<div class="tableWrap"><table class="rtable"><thead><tr><th>דיסציפלינה</th><th>מתכנן / משרד</th><th>מבנה שכ״ט</th><th>שכ״ט (ללא מע״מ)</th><th>חויב</th><th>סה״כ חשבונות</th><th>שולם</th><th>יתרה</th><th>פתוח</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="9" class="empty">אין מתכננים בפרויקט. הוסף מתכנן או ייבא הצעת מחיר.</td></tr>`}
       ${es.length ? `<tr class="total"><td colspan="3">סה״כ פרויקט</td><td class="n">${money(r2(tot.fee))}</td><td>${tot.fee ? qty(tot.billed / tot.fee * 100) : 0}%</td><td class="n">${money(r2(tot.billed))}</td><td class="n">${money(r2(tot.paid))}</td><td class="n">${money(r2(tot.fee - tot.billed))}</td><td></td></tr>` : ''}</tbody></table></div>`, {right: `${es.length} מתכננים · לחיצה על שורה פותחת / סוגרת את פרטי המתכנן`})}
     ${eHtml}`;
@@ -1886,9 +1936,9 @@ function engDetailHtml(e) {
       <div class="row"><button class="small" onclick="editEng('${e.id}')">ערוך מתכנן / הצעה</button><button class="primary" onclick="editBill(null,'${e.id}')">+ חשבון חדש (התקבלה חשבונית עסקה)</button></div></div>
     <div class="stats"><div class="stat"><div class="label">שכר טרחה</div><div class="value">${money(s2.fee)}</div></div><div class="stat"><div class="label">חויב עד כה</div><div class="value">${money(s2.billed)}</div><div class="small muted">${qty(s2.pct)}%</div></div>
       <div class="stat"><div class="label">הועבר לתשלום</div><div class="value">${money(s2.transferred)}</div></div><div class="stat good"><div class="label">שולם</div><div class="value">${money(s2.paid)}</div></div><div class="stat"><div class="label">יתרה לחיוב</div><div class="value">${money(s2.remaining)}</div></div></div>
-    ${e.feeType === 'hourly' ? `<div class="small">תעריף ${money(e.hourlyRate)} לשעה${e.estHours ? ` · אומדן ${qty(e.estHours)} שעות` : ''}</div>` : fold('ms_' + e.id, 'אבני דרך לתשלום', `<div class="tableWrap"><table><thead><tr><th>שלב</th><th>% משכ״ט</th><th>סכום</th><th>חויב מהשלב</th><th>חויב ₪</th><th>יתרה בשלב</th></tr></thead><tbody>${msRows || '<tr><td colspan="6" class="empty">לא הוגדרו אבני דרך</td></tr>'}</tbody></table></div>`, {inner: true, right: `${(e.milestones || []).length} שלבים`})}
+    ${e.feeType === 'hourly' ? `<div class="small">תעריף ${money(e.hourlyRate)} לשעה${e.estHours ? ` · אומדן ${qty(e.estHours)} שעות` : ''}</div>` : fold('ms_' + e.id, 'אבני דרך לתשלום', `<div class="tableWrap"><table class="rtable"><thead><tr><th>שלב</th><th>% משכ״ט</th><th>סכום</th><th>חויב מהשלב</th><th>חויב ₪</th><th>יתרה בשלב</th></tr></thead><tbody>${msRows || '<tr><td colspan="6" class="empty">לא הוגדרו אבני דרך</td></tr>'}</tbody></table></div>`, {inner: true, right: `${(e.milestones || []).length} שלבים`})}
     ${(e.extras || []).length ? `<div class="small" style="margin-top:6px">תוספות: ${(e.extras || []).map(x => `${esc(x.name)} ${x.amount ? money(x.amount) : x.unit ? money(x.unit) + ' ליחידה' : ''}`).join(' · ')}</div>` : ''}
-    ${fold('bills_' + e.id, 'חשבונות', `${payLegend()}<div class="tableWrap" style="margin-top:6px"><table><thead><tr><th>#</th><th>מה חויב</th><th>סכום</th><th>1. חשבונית עסקה</th><th>2. העברה לתשלום</th><th>3. תשלום</th><th>4. חשבונית מס</th></tr></thead>
+    ${fold('bills_' + e.id, 'חשבונות', `${payLegend()}<div class="tableWrap" style="margin-top:6px"><table class="rtable"><thead><tr><th>#</th><th>מה חויב</th><th>סכום</th><th>1. חשבונית עסקה</th><th>2. העברה לתשלום</th><th>3. תשלום</th><th>4. חשבונית מס</th></tr></thead>
       <tbody>${bRows || `<tr><td colspan="7" class="empty">אין חשבונות עדיין.</td></tr>`}</tbody></table></div>`, {inner: true, right: `${bs.length} חשבונות`})}</div>`;
 }
 function billLinesText(b, e) {
@@ -1910,7 +1960,7 @@ function viewPBills(v) {
       <select onchange="S.pbFilter={...(S.pbFilter||{status:'open'}),project:this.value};render()"><option value="">כל הפרויקטים</option>${S.db.projects.map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
       <select onchange="S.pbFilter={...(S.pbFilter||{}),status:this.value};render()">${[['open', 'פתוחים'], ['1', 'ממתינים להעברה'], ['2', 'ממתינים לתשלום'], ['3', 'חסרה חשבונית מס'], ['4', 'סגורים'], ['all', 'הכל']].map(([k, t]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <span class="small muted">${rows.length} חשבונות · ${money(total)} כולל מע״מ</span><span style="margin-inline-start:auto">${payLegend()}</span></div></div>
-    <div class="tableWrap"><table><thead><tr><th>פרויקט</th><th>דיסציפלינה</th><th>מתכנן</th><th>#</th><th>חשבונית עסקה</th><th>סכום כולל מע״מ</th><th>הועבר לתשלום</th><th>לתשלום עד</th><th>שולם</th><th>חשבונית מס</th><th>סטטוס</th></tr></thead>
+    <div class="tableWrap"><table class="rtable"><thead><tr><th>פרויקט</th><th>דיסציפלינה</th><th>מתכנן</th><th>#</th><th>חשבונית עסקה</th><th>סכום כולל מע״מ</th><th>הועבר לתשלום</th><th>לתשלום עד</th><th>שולם</th><th>חשבונית מס</th><th>סטטוס</th></tr></thead>
     <tbody>${tr || '<tr><td colspan="11" class="empty">אין חשבונות בסינון הזה.</td></tr>'}</tbody></table></div>`;
 }
 function viewPSettings(v) {
