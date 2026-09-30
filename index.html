@@ -719,11 +719,127 @@ async function saveDb() {
   S.db.updatedAt = new Date().toISOString();
   try { await idb.set('db', S.db); } catch (e) { toast('שמירה בדפדפן נכשלה: ' + e.message, true); }
   clearTimeout(saveTimer); saveTimer = setTimeout(writeDataFile, 600);
+  cloudSchedule();
 }
 async function writeDataFile() {
   if (!S.root || S.rootPerm !== 'granted') return;
   try { const fh = await S.root.getFileHandle(DATA_FILE, {create: true}); const w = await fh.createWritable(); await w.write(JSON.stringify({schema: 'atlas-mod', version: 1, ...S.db}, null, 1)); await w.close(); }
   catch (e) { console.warn('data file', e); }
+}
+/* ===================================================================== מסד נתונים משותף (Firebase Realtime Database, REST)
+   מיזוג לפי רשומה: לכל רשומה updatedAt - הגרסה החדשה יותר נשמרת. מחיקות נרשמות ב-deleted כדי שלא "יחזרו". */
+const FIREBASE_URL_DEFAULT = 'https://atlas-mod-default-rtdb.europe-west1.firebasedatabase.app';
+const FB_NODE = 'atlasMod';
+const LISTS = ['people', 'orders', 'reports', 'projects', 'engagements', 'bills'];
+function toArr(v) { if (Array.isArray(v)) return v.filter(x => x != null); if (v && typeof v === 'object') return Object.keys(v).sort((a, b) => a - b).map(k => v[k]).filter(x => x != null); return []; }
+function fbUrl() { let u = ''; try { u = localStorage.getItem('atlasmod.fb') || ''; } catch (e) {} return (u || FIREBASE_URL_DEFAULT).trim().replace(/\/+$/, '').replace(/\.json$/, ''); }
+const CLOUD = {state: 'off', lastSync: null, lastRemote: null, etagOk: true, busy: false, pending: false, dirty: false, err: ''};
+function normRec(r) { for (const k of ['lines', 'milestones', 'extras', 'versions', 'folder', 'periods', 'items']) if (r[k] !== undefined && !Array.isArray(r[k])) r[k] = toArr(r[k]); for (const l of r.lines || []) if (l && typeof l === 'object') normRec(l); return r; }
+function normDb(d) { const x = dbFrom(d || {}); for (const k of LISTS) x[k] = x[k].map(normRec); if (d?.updatedAt) x.updatedAt = d.updatedAt; return x; }
+function mergeDb(local, remote) {
+  const out = dbFrom({}), tomb = {...(remote?.deleted || {}), ...(local?.deleted || {})};
+  for (const k of Object.keys(tomb)) if (remote?.deleted?.[k] && remote.deleted[k] > tomb[k]) tomb[k] = remote.deleted[k];
+  for (const k of LISTS) {
+    const m = new Map();
+    for (const r of toArr(remote?.[k])) if (r?.id) m.set(r.id, r);
+    for (const r of toArr(local?.[k])) if (r?.id) { const o = m.get(r.id); if (!o || (r.updatedAt || '') >= (o.updatedAt || '')) m.set(r.id, r); }
+    out[k] = [...m.values()].filter(r => !(tomb[r.id] && tomb[r.id] >= (r.updatedAt || '')));
+  }
+  out.settings = (local?.settings?.updatedAt || '') >= (remote?.settings?.updatedAt || '') ? (local?.settings || {}) : remote.settings;
+  out.deleted = tomb; return normDb(out);
+}
+function removeRecs(list, pred) { const now = new Date().toISOString(); S.db.deleted = S.db.deleted || {}; for (const r of S.db[list].filter(pred)) S.db.deleted[r.id] = now; S.db[list] = S.db[list].filter(r => !pred(r)); }
+const dbSig = d => JSON.stringify(LISTS.map(k => (d[k] || []).map(r => r.id + '|' + (r.updatedAt || '')).sort())) + JSON.stringify(d.settings || {}) + Object.keys(d.deleted || {}).length;
+async function fbGet(path, etag) {
+  const r = await fetch(`${fbUrl()}/${path}.json`, etag && CLOUD.etagOk ? {headers: {'X-Firebase-ETag': 'true'}} : {});
+  if (!r.ok) throw new Error(`Firebase ${r.status}`);
+  return {data: await r.json(), etag: r.headers.get('ETag')};
+}
+async function fbPut(path, data, etag) {
+  const h = {'Content-Type': 'application/json'}; if (etag && CLOUD.etagOk) h['if-match'] = etag;
+  const r = await fetch(`${fbUrl()}/${path}.json`, {method: 'PUT', headers: h, body: JSON.stringify(data)});
+  if (r.status === 412) return {conflict: true};
+  if (!r.ok) throw new Error(`Firebase ${r.status}${r.status === 401 || r.status === 403 ? ' - אין הרשאה (בדוק את כללי האבטחה במסד הנתונים)' : ''}`);
+  return {ok: true};
+}
+function cloudChip() {
+  if (!fbUrl()) return '';
+  const t = CLOUD.lastSync ? new Date(CLOUD.lastSync).toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'}) : '';
+  if (CLOUD.state === 'ok') return `<button class="chip good" onclick="cloudSync(true)" title="לחץ לסנכרון עכשיו">☁ מסונכרן ${t}</button>`;
+  if (CLOUD.state === 'sync') return `<span class="chip">☁ מסנכרן…</span>`;
+  return `<button class="chip bad" onclick="cloudSync(true)" title="${esc(CLOUD.err)}">☁ לא מסונכרן - לחץ לנסות שוב</button>`;
+}
+let cloudTimer = null;
+function cloudSchedule() { if (!fbUrl()) return; CLOUD.dirty = true; clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudSync(), 700); }
+/* סנכרון: קורא מהענן, ממזג עם השינויים המקומיים, וכותב בחזרה (עם ETag - אם מישהו כתב בינתיים, מנסה שוב) */
+async function cloudSync(manual) {
+  if (!fbUrl()) return;
+  if (CLOUD.busy) { CLOUD.pending = true; return; }
+  CLOUD.busy = true; CLOUD.state = 'sync'; renderChips();
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let got;
+      try { got = await fbGet(FB_NODE, true); }
+      catch (e) { if (CLOUD.etagOk && e instanceof TypeError) { CLOUD.etagOk = false; got = await fbGet(FB_NODE, false); } else throw e; }
+      const remote = got.data ? normDb(got.data) : null;
+      const before = dbSig(S.db);
+      const merged = remote ? mergeDb(S.db, remote) : normDb(S.db);
+      const needPush = CLOUD.dirty || !remote || dbSig(merged) !== dbSig(remote);
+      if (needPush) {
+        merged.updatedAt = new Date().toISOString();
+        let res;
+        try { res = await fbPut(FB_NODE, merged, got.etag); }
+        catch (e) { if (CLOUD.etagOk && e instanceof TypeError) { CLOUD.etagOk = false; res = await fbPut(FB_NODE, merged, null); } else throw e; }
+        if (res.conflict) continue;
+      }
+      CLOUD.dirty = false;
+      S.db = merged; await idb.set('db', S.db);
+      CLOUD.lastRemote = merged.updatedAt || remote?.updatedAt || null; CLOUD.lastSync = Date.now(); CLOUD.state = 'ok'; CLOUD.err = '';
+      if (dbSig(merged) !== before) cloudRerender();
+      pushLocalBlobs();
+      if (manual) toast('☁ הנתונים סונכרנו');
+      break;
+    }
+  } catch (e) { CLOUD.state = 'err'; CLOUD.err = e.message; console.warn('cloud', e); if (manual) toast('סנכרון נכשל: ' + e.message, true); }
+  finally { CLOUD.busy = false; renderChips(); if (CLOUD.pending) { CLOUD.pending = false; setTimeout(() => cloudSync(), 200); } }
+}
+/* תבניות שנשמרו רק בדפדפן הזה (למשל מגרסה קודמת של האתר) - מעלים לענן פעם אחת */
+let blobsPushed = false;
+async function pushLocalBlobs() {
+  if (blobsPushed || !fbUrl()) return; blobsPushed = true;
+  const keys = [...S.db.orders.filter(o => o.templateName).map(o => 'tpl:' + o.id), ...S.db.people.filter(p => p.reportTemplateName).map(p => 'rtpl:' + p.id)];
+  let n = 0;
+  for (const k of keys) {
+    try { const local = await idb.get(k); if (!local) continue;
+      const {data} = await fbGet(`${FB_NODE}_files/${fileKey(k)}`); if (data?.b64) continue;
+      await fbPut(`${FB_NODE}_files/${fileKey(k)}`, {b64: bufToB64(local), at: new Date().toISOString()}); n++; } catch (e) { console.warn('blob push', k, e); }
+  }
+  if (n) toast(`☁ ${n} תבניות Excel הועלו למסד המשותף`);
+}
+/* בדיקה תקופתית: אם מישהו אחר עדכן - מושכים וממזגים */
+async function cloudPoll() {
+  if (!fbUrl() || CLOUD.busy || document.hidden) return;
+  try { const {data} = await fbGet(FB_NODE + '/updatedAt'); if (data && data !== CLOUD.lastRemote) await cloudSync(); else if (CLOUD.state === 'err') await cloudSync(); } catch (e) { CLOUD.state = 'err'; CLOUD.err = e.message; renderChips(); }
+}
+let rerenderPending = false;
+function cloudRerender() { if ($('#modalRoot').innerHTML) { rerenderPending = true; return; } S.scan = S.scan && null; render(); toast('☁ התקבלו עדכונים מהמסד המשותף'); }
+/* קבצים (תבניות Excel) - נשמרים גם בענן, כדי שגם השותף יוכל להפיק */
+function bufToB64(buf) { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 32768) s += String.fromCharCode.apply(null, u.subarray(i, i + 32768)); return btoa(s); }
+function b64ToBuf(b) { return Uint8Array.from(atob(b), c => c.charCodeAt(0)).buffer; }
+const fileKey = k => k.replace(/[.$#\[\]\/:]/g, '_');
+async function blobSet(key, buf) { await idb.set(key, buf); if (fbUrl()) { try { await fbPut(`${FB_NODE}_files/${fileKey(key)}`, {b64: bufToB64(buf), at: new Date().toISOString()}); } catch (e) { toast('התבנית נשמרה במחשב אך לא בענן: ' + e.message, true); } } }
+async function blobGet(key) { const local = await idb.get(key); if (local) return local; if (!fbUrl()) return undefined; try { const {data} = await fbGet(`${FB_NODE}_files/${fileKey(key)}`); if (data?.b64) { const buf = b64ToBuf(data.b64); await idb.set(key, buf); return buf; } } catch (e) {} return undefined; }
+function cloudCard() {
+  return `<div class="card"><h2>☁ מסד נתונים משותף (Firebase)</h2>
+    <p class="small">כשמוגדרת כתובת, כל הנתונים (עובדים, הזמנות, שיוכים, פרויקטים, מתכננים, חשבונות) ותבניות ה-Excel נשמרים במסד המשותף, וכל מי שפותח את האתר רואה את אותם נתונים. עדכונים של השותף מגיעים אוטומטית תוך כחצי דקה.</p>
+    <div class="row"><input id="fbUrlIn" class="num grow" dir="ltr" value="${esc(fbUrl())}" placeholder="https://xxxx-default-rtdb.europe-west1.firebasedatabase.app/"><button onclick="saveFbUrl()">שמור וחבר</button><button class="small" onclick="cloudSync(true)">סנכרן עכשיו</button></div>
+    <div class="small" style="margin-top:6px">מצב: ${!fbUrl() ? 'לא מוגדר - הנתונים נשמרים רק במחשב הזה' : CLOUD.state === 'ok' ? `<span style="color:var(--good)">✓ מחובר ומסונכרן</span>` : CLOUD.state === 'err' ? `<span style="color:var(--bad)">✗ ${esc(CLOUD.err)}</span>` : 'מתחבר…'}${FIREBASE_URL_DEFAULT ? ' · כתובת ברירת המחדל מוגדרת באתר' : ''}</div>
+    <p class="small muted">⚠ המסד פתוח ללא סיסמה: כל מי שיודע את הכתובת שלו יכול לקרוא ולשנות את הנתונים.</p></div>`;
+}
+async function saveFbUrl() {
+  const u = $('#fbUrlIn').value.trim(); if (u && !/^https:\/\/.+(firebaseio\.com|firebasedatabase\.app)/.test(u)) return toast('כתובת Firebase לא תקינה', true);
+  try { if (u) localStorage.setItem('atlasmod.fb', u); else localStorage.removeItem('atlasmod.fb'); } catch (e) {}
+  CLOUD.state = 'off'; CLOUD.dirty = true; await cloudSync(true); render();
 }
 function upsert(list, rec, prefix) { if (!rec.id) rec.id = uid(prefix); rec.updatedAt = new Date().toISOString(); const i = S.db[list].findIndex(x => x.id === rec.id); if (i >= 0) S.db[list][i] = rec; else S.db[list].push(rec); return rec; }
 
@@ -745,7 +861,7 @@ async function pickRoot() {
   } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
 }
 async function grantRoot() { S.rootPerm = await checkPerm(S.root, true); renderChips(); if (S.rootPerm === 'granted') { await maybeLoadDataFile(); S.scan = null; render(); } }
-function dbFrom(d) { const e = {people: [], orders: [], reports: [], projects: [], engagements: [], bills: [], settings: {}}; for (const k of Object.keys(e)) if (d && d[k] !== undefined) e[k] = d[k]; if (d?.updatedAt) e.updatedAt = d.updatedAt; return e; }
+function dbFrom(d) { const e = {people: [], orders: [], reports: [], projects: [], engagements: [], bills: [], settings: {}, deleted: {}}; for (const k of Object.keys(e)) if (d && d[k] !== undefined && d[k] !== null) e[k] = (k === "settings" || k === "deleted") ? d[k] : toArr(d[k]); if (d?.updatedAt) e.updatedAt = d.updatedAt; return e; }
 function dbHasData(d) { return !!(d && ((d.people || []).length || (d.projects || []).length)); }
 async function maybeLoadDataFile() {
   try {
@@ -851,7 +967,7 @@ async function prepareInvoice(opts) {
   steps.push({ok: true, text: 'תיקיית חודש נמצאה'});
   let src, srcName, prev, isFirst;
   if (n === 1) {
-    const tpl = await idb.get('tpl:' + o.id);
+    const tpl = await blobGet('tpl:' + o.id);
     if (!tpl) { steps.push({ok: false, text: 'חשבון ראשון: יש להעלות תבנית טופס 23.030 להזמנה זו.'}); out.needTemplate = true; return out; }
     src = tpl; srcName = o.templateName || 'תבנית'; prev = readInvoice(tpl, srcName); isFirst = true;
     steps.push({ok: true, text: `חשבון ראשון - תבנית: \u2066${srcName}\u2069`});
@@ -894,7 +1010,7 @@ async function prepareInvoice(opts) {
 
 /* ===================================================================== modal + form helpers */
 function modal(title, body, actions) { $('#modalRoot').innerHTML = `<div class="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal"><h2>${esc(title)}</h2>${body}<div class="actions">${actions}</div></div></div>`; }
-function closeModal() { $('#modalRoot').innerHTML = ''; }
+function closeModal() { $('#modalRoot').innerHTML = ''; if (rerenderPending) { rerenderPending = false; render(); } }
 function formVals(root) {
   const o = {};
   root.querySelectorAll('[data-k]').forEach(el => {
@@ -928,6 +1044,7 @@ function renderChips() {
   else if (S.rootPerm !== 'granted') h += `<button class="chip warn" onclick="grantRoot()">🔒 אשר גישה לתיקיות (${esc(S.root.name)})</button>`;
   else h += `<span class="chip good">✓ תיקיית בסיס: ${esc(S.root.name)}</span>`;
   h += S.module === 'proj' ? `<span class="chip">${S.db.projects.length} פרויקטים · ${S.db.engagements.length} מתכננים</span>` : `<span class="chip">${S.db.people.length} עובדים · ${S.db.orders.length} הזמנות</span>`;
+  h += cloudChip();
   if (!S.idbOk) h += `<span class="chip bad">הדפדפן חוסם שמירה מקומית</span>`;
   $('#statusChips').innerHTML = h;
 }
@@ -992,7 +1109,7 @@ async function savePerson(id) {
 }
 async function deleteRec(list, id) {
   if (!confirm('למחוק? הקבצים בתיקיות לא נמחקים.')) return;
-  S.db[list] = S.db[list].filter(x => x.id !== id); await saveDb(); closeModal(); render();
+  removeRecs(list, x => x.id === id); await saveDb(); closeModal(); render();
 }
 function importPersonFromReport() {
   pickFile('.xlsx', f => run(async () => {
@@ -1067,7 +1184,7 @@ function uploadTemplate(orderId) {
   pickFile('.xlsx', f => run(async () => {
     const o = orderById(orderId); const buf = await f.arrayBuffer(); const inv = readInvoice(buf, f.name);
     if (inv.orderDigits && digits(o.number) && inv.orderDigits !== digits(o.number)) throw new Error(`מספר ההזמנה בתבנית (${inv.orderDisplay}) שונה מההזמנה (${o.number}).`);
-    await idb.set('tpl:' + orderId, buf); o.templateName = f.name; upsert('orders', o); await saveDb();
+    await blobSet('tpl:' + orderId, buf); o.templateName = f.name; upsert('orders', o); await saveDb();
     toast(`התבנית נשמרה (${inv.orderDisplay}, ${inv.lines.length} שורות חיוב)`); editOrder(orderId);
   }, 'בודק את התבנית…'));
 }
@@ -1142,7 +1259,7 @@ function uploadReportTemplate(pid) {
   pickFile('.xlsx', f => run(async () => {
     const buf = await f.arrayBuffer(); const sh = templateSheets23031(buf);
     if (!sh.length) throw new Error('בקובץ לא נמצא טופס 23.031.');
-    await idb.set('rtpl:' + pid, buf); const p = personById(pid); p.reportTemplateName = f.name; upsert('people', p); await saveDb();
+    await blobSet('rtpl:' + pid, buf); const p = personById(pid); p.reportTemplateName = f.name; upsert('people', p); await saveDb();
     toast(`התבנית נשמרה (${sh.length} גיליונות: ${sh.map(x => x.order || x.name).join(', ')})`); editPerson(pid);
   }, 'בודק את התבנית…'));
 }
@@ -1156,7 +1273,7 @@ async function openAttendance() {
     const p = personById(S.personId);
     Object.assign(ATT, {att, tplBuf: null, tplName: null, sheets: [], sel: new Set(att.rows.map((x, i) => i).filter(i => !att.rows[i].issues.length)), desc: att.rows.map(x => x.desc)});
     // תבנית: של העובד, אחרת הדוח של החודש הקודם
-    const stored = await idb.get('rtpl:' + p.id);
+    const stored = await blobGet('rtpl:' + p.id);
     if (stored) { ATT.tplBuf = stored; ATT.tplName = p.reportTemplateName + ' (תבנית העובד)'; }
     else { try { const pm = await subDir(await personDir(p), folderName(shiftMonth(S.month, -1))); const c = pm && reportCandidates(await listEntries(pm)).find(x => x.xlsx);
       if (c) { ATT.tplBuf = await readFile(pm, c.xlsx); ATT.tplName = `${c.xlsx} (החודש הקודם)`; } } catch (e) {} }
@@ -1175,7 +1292,7 @@ function setAttTemplate(buf, name) {
   attModal();
 }
 function pickAttTemplate() { pickFile('.xlsx', async f => { const buf = await f.arrayBuffer(); setAttTemplate(buf, f.name);
-  if (ATT.sheets.length && confirm('לשמור את הקובץ כתבנית דוח השעות של העובד לחודשים הבאים?')) { await idb.set('rtpl:' + S.personId, buf); const p = personById(S.personId); p.reportTemplateName = f.name; upsert('people', p); await saveDb(); } }); }
+  if (ATT.sheets.length && confirm('לשמור את הקובץ כתבנית דוח השעות של העובד לחודשים הבאים?')) { await blobSet('rtpl:' + S.personId, buf); const p = personById(S.personId); p.reportTemplateName = f.name; upsert('people', p); await saveDb(); } }); }
 function attTotals() {
   const rows = ATT.att.rows.filter((x, i) => ATT.sel.has(i));
   const mins = rows.reduce((a, x) => a + (x.minutes || 0), 0), days = new Set(rows.map(x => x.date)).size;
@@ -1379,7 +1496,7 @@ function assignChecks() {
 async function saveAssign() {
   const d = S.scan.parsed, rp = S.scan.report || {}, orderId = $('#aOrder').value;
   const old = S.db.reports.find(x => x.personId === S.personId && x.month === S.month);
-  if (old && old.orderId !== orderId) S.db.reports = S.db.reports.filter(x => x !== old);
+  if (old && old.orderId !== orderId) removeRecs('reports', x => x === old);
   const lines = assignQtys().map(({itemNo, type, qty}) => ({itemNo, type, qty}));
   const sum = t => r2(lines.filter(x => x.type === t).reduce((a, x) => a + x.qty, 0));
   const rec = {...(old || {}), id: reportId(S.personId, S.month, orderId), personId: S.personId, month: S.month, orderId, lines,
@@ -1531,7 +1648,7 @@ async function stepMerge(manualFile) {
 
 /* ---------------------------------------------------------------- tools */
 function viewTools(v) {
-  v.innerHTML = `<div class="grid2">
+  v.innerHTML = cloudCard() + `<div class="grid2">
   <div class="card"><h2>תיקיית בסיס</h2>
     ${!fsSupported() ? '<div class="alert bad">הדפדפן הזה לא תומך בגישה לתיקיות. יש לפתוח את האתר ב-Google Chrome או Microsoft Edge במחשב.</div>' : `
     <p>${S.root ? `נבחרה: <b>${esc(S.root.name)}</b> ${S.rootPerm === 'granted' ? '<span class="pill ok">✓ גישה מאושרת</span>' : '<span class="pill missing">נדרש אישור</span>'}` : 'לא נבחרה תיקייה.'}</p>
@@ -1803,10 +1920,10 @@ function viewPSettings(v) {
       ${fld('dueSoonDays', 'התראה: מועד תשלום מתקרב - כמה ימים מראש', st.dueSoonDays, {num: true})}
       ${fld('taxInvoiceDays', 'התראה: חשבונית מס שלא התקבלה אחרי התשלום (ימים)', st.taxInvoiceDays, {num: true})}</div>
     <p class="small muted">מועד התשלום מחושב לכל מתכנן לפי תנאי התשלום בהצעה שלו (למשל "שוטף + 30" = סוף החודש של חשבונית העסקה + 30 יום), מתאריך חשבונית העסקה.</p>
-    <button class="primary" onclick="savePSettings()">שמור</button></div>
+    <button class="primary" onclick="savePSettings()">שמור</button></div>${cloudCard()}
     <div class="card"><h2>איך מקבלים את ההתראות</h2><p class="small">ההתראות מופיעות בלוח הבקרה ובמספר האדום על כפתור "חשבונות מתכננים בפרויקטים". הן מחושבות מחדש בכל פתיחה של האתר לפי התאריך של היום.</p></div>`;
 }
-async function savePSettings() { const x = formVals($('#psf')); S.db.settings = {...(S.db.settings || {}), alerts: {...psettings(), ...x}}; await saveDb(); toast('נשמר'); render(); }
+async function savePSettings() { const x = formVals($('#psf')); S.db.settings = {...(S.db.settings || {}), alerts: {...psettings(), ...x}, updatedAt: new Date().toISOString()}; await saveDb(); toast('נשמר'); render(); }
 /* --------------------------------------------------------------- forms */
 function editProject(id) {
   const p = id ? {...projById(id)} : {};
@@ -1816,7 +1933,7 @@ function editProject(id) {
 async function saveProject(id) { const x = formVals($('#prf')); if (!x.name) return toast('חובה שם פרויקט', true); const r = upsert('projects', id ? {...projById(id), ...x} : x, 'proj'); await saveDb(); closeModal(); S.projectId = r.id; S.ptab = 'projects'; remember(); render(); return r; }
 async function deleteProject(id) {
   const n = engsOf(id).length; if (!confirm(`למחוק את הפרויקט${n ? ` כולל ${n} מתכננים וכל החשבונות שלהם` : ''}?`)) return;
-  const eids = engsOf(id).map(e => e.id); S.db.bills = S.db.bills.filter(b => !eids.includes(b.engagementId)); S.db.engagements = S.db.engagements.filter(e => e.projectId !== id); S.db.projects = S.db.projects.filter(p => p.id !== id);
+  const eids = engsOf(id).map(e => e.id); removeRecs('bills', b => eids.includes(b.engagementId)); removeRecs('engagements', e => e.projectId === id); removeRecs('projects', p => p.id === id);
   S.projectId = null; S.engId = null; await saveDb(); closeModal(); render();
 }
 function msRowHtml(m) { return `<tr data-ms="${esc(m.id || uid('ms'))}"><td><input data-f="name" value="${esc(m.name || '')}" style="width:100%;min-width:220px"></td><td><input data-f="percent" class="num" value="${esc(m.percent ?? '')}" style="width:70px" oninput="engFormCalc()"></td><td class="n msAmt"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
@@ -1862,7 +1979,7 @@ async function saveEng(id) {
   const rec = {...(id ? engById(id) : {sourceFile: pre.sourceFile || null}), ...x, notes: notesEl ? notesEl.value.trim() : x.notes, vat: (Number(x.vat) || 0) / 100, terms: {type: $('#enTermsType').value, days: Number($('#enTermsDays').value) || 0}, milestones, extras};
   const r = upsert('engagements', rec, 'eng'); await saveDb(); closeModal(); S.projectId = r.projectId; S.engId = r.id; S.ptab = 'projects'; remember(); render(); toast('המתכנן נשמר');
 }
-async function deleteEng(id) { if (!confirm('למחוק את המתכנן וכל החשבונות שלו?')) return; S.db.bills = S.db.bills.filter(b => b.engagementId !== id); S.db.engagements = S.db.engagements.filter(e => e.id !== id); S.engId = null; await saveDb(); closeModal(); render(); }
+async function deleteEng(id) { if (!confirm('למחוק את המתכנן וכל החשבונות שלו?')) return; removeRecs('bills', b => b.engagementId === id); removeRecs('engagements', e => e.id === id); S.engId = null; await saveDb(); closeModal(); render(); }
 function importQuote(projectId) {
   pickFile('.pdf', f => run(async () => {
     const q = await parseQuotePdf(await f.arrayBuffer(), f.name);
@@ -1936,12 +2053,12 @@ async function saveBill(id, engId) {
   document.querySelectorAll('[data-st]').forEach(el => { const [k, f] = el.dataset.st.split('.'); const v = el.value.trim(); st[k][f] = v === '' ? null : (['amount', 'approved'].includes(f) ? Number(v.replace(/,/g, '')) : v); });
   if (st.payment.date && !st.transfer.date) st.transfer.date = st.payment.date;   // שולם => הועבר
   const e = engById(engId);
-  for (const l of lines.filter(l => l.kind === 'ms')) { const m = e.milestones.find(z => z.id === l.msId); const after = msClaimed(e, l.msId, id || null) + l.portion; if (after > 100.5 && !confirm(`השלב "${m?.name}" יחויב ב-${qty(after)}% (מעל 100%). לשמור בכל זאת?`)) return; }
+  for (const l of lines.filter(l => l.kind === 'ms')) { const m = (e.milestones || []).find(z => z.id === l.msId); const after = msClaimed(e, l.msId, id || null) + l.portion; if (after > 100.5 && !confirm(`השלב "${m?.name}" יחויב ב-${qty(after)}% (מעל 100%). לשמור בכל זאת?`)) return; }
   const old = id ? S.db.bills.find(b => b.id === id) : {};
   upsert('bills', {...old, engagementId: engId, seq: x.seq, vat: (Number(x.vatP) || 0) / 100, lines, ...st, notes: $('#bNotes').value.trim()}, 'bill');
   await saveDb(); closeModal(); render(); toast(`החשבון נשמר · ${STAGE_NAMES[billStatus({...st})]}`);
 }
-async function deleteBill(id) { if (!confirm('למחוק את החשבון?')) return; S.db.bills = S.db.bills.filter(b => b.id !== id); await saveDb(); closeModal(); render(); }
+async function deleteBill(id) { if (!confirm('למחוק את החשבון?')) return; removeRecs('bills', b => b.id === id); await saveDb(); closeModal(); render(); }
 
 /* ===================================================================== boot */
 (async function boot() {
@@ -1951,6 +2068,8 @@ async function deleteBill(id) { if (!confirm('למחוק את החשבון?')) r
   if (!window.XLSX || !window.JSZip || !window.PDFLib) toast('חלק מהרכיבים לא נטענו - בדוק חיבור לאינטרנט ורענן את הדף.', true);
   if (S.personId && !personById(S.personId)) S.personId = null;
   render();
+  if (fbUrl()) { await cloudSync(); setInterval(cloudPoll, 20000); window.addEventListener('focus', cloudPoll); }
+  else setInterval(() => { if (fbUrl()) cloudPoll(); }, 20000);
 })();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 window.__atlas = {parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
