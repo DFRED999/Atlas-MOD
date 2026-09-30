@@ -1092,18 +1092,59 @@ function renderChips() {
   else if (!S.root) h += `<button class="chip warn" onclick="pickRoot()">בחר תיקיית בסיס</button>`;
   else if (S.rootPerm !== 'granted') h += `<button class="chip warn" onclick="grantRoot()">🔒 אשר גישה לתיקיות (${esc(S.root.name)})</button>`;
   else h += `<span class="chip good">✓ תיקיית בסיס: ${esc(S.root.name)}</span>`;
-  h += S.module === 'proj' ? `<span class="chip">${S.db.projects.length} פרויקטים · ${S.db.engagements.length} מתכננים</span>` : `<span class="chip">${S.db.people.length} עובדים · ${S.db.orders.length} הזמנות</span>`;
+  h += S.module === 'proj' ? `<span class="chip">${S.db.projects.length} פרויקטים · ${S.db.engagements.length} מתכננים</span>` : modLocked() ? '' : `<span class="chip">${S.db.people.length} עובדים · ${S.db.orders.length} הזמנות</span>`;
   h += cloudChip();
   if (!S.idbOk) h += `<span class="chip bad">הדפדפן חוסם שמירה מקומית</span>`;
   $('#statusChips').innerHTML = h;
+}
+/* ---------- נעילת "הגשת חשבונות משהב"ט" בקוד (נשמר כ-hash, משותף לכל המשתמשים דרך המסד) */
+async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+function unlockedHash() { try { return sessionStorage.getItem('atlasmod.unlock') || localStorage.getItem('atlasmod.unlock') || ''; } catch (e) { return ''; } }
+function modLocked() { const L = S.db.settings?.modLock; return !!(L?.hash) && unlockedHash() !== L.hash; }
+function lockScreen() {
+  return `<div class="card" style="max-width:420px;margin:30px auto;text-align:center"><div style="font-size:34px">🔒</div><h2>הגשת חשבונות משהב״ט נעולה</h2>
+    <p class="small muted">הזן את הקוד כדי להיכנס. חשבונות המתכננים בפרויקטים פתוחים ללא קוד.</p>
+    <input id="lockIn" type="password" inputmode="numeric" autocomplete="off" class="num" style="text-align:center;font-size:20px;letter-spacing:4px;width:200px" onkeydown="if(event.key==='Enter')tryUnlock()">
+    <div style="margin:10px 0"><label class="small"><input type="checkbox" id="lockRemember"> זכור אותי במכשיר הזה</label></div>
+    <button class="primary" onclick="tryUnlock()">כניסה</button> <button class="ghost" onclick="setModule('proj')">לחשבונות הפרויקטים</button></div>`;
+}
+async function tryUnlock() {
+  const L = S.db.settings?.modLock; const code = $('#lockIn').value.trim(); if (!code) return;
+  const h = await sha256(L.salt + code);
+  if (h !== L.hash) { toast('קוד שגוי', true); $('#lockIn').value = ''; $('#lockIn').focus(); return; }
+  try { sessionStorage.setItem('atlasmod.unlock', h); if ($('#lockRemember').checked) localStorage.setItem('atlasmod.unlock', h); } catch (e) {}
+  render();
+}
+function lockNow() { try { sessionStorage.removeItem('atlasmod.unlock'); localStorage.removeItem('atlasmod.unlock'); } catch (e) {} render(); }
+async function setModLock() {
+  const a = $('#lockNew').value.trim(), b = $('#lockNew2').value.trim();
+  if (a.length < 4) return toast('הקוד צריך להיות לפחות 4 תווים', true);
+  if (a !== b) return toast('הקודים אינם זהים', true);
+  const salt = Math.random().toString(36).slice(2, 12), hash = await sha256(salt + a);
+  S.db.settings = {...(S.db.settings || {}), modLock: {hash, salt, setAt: new Date().toISOString()}, updatedAt: new Date().toISOString()};
+  try { sessionStorage.setItem('atlasmod.unlock', hash); } catch (e) {}
+  await saveDb(); toast('🔒 הקוד נשמר - הגשת החשבונות נעולה בכל המכשירים'); render();
+}
+async function removeModLock() {
+  if (!confirm('להסיר את הנעילה? כל מי שפותח את האתר יוכל להיכנס להגשת החשבונות.')) return;
+  const st = {...(S.db.settings || {})}; delete st.modLock; st.updatedAt = new Date().toISOString(); S.db.settings = st; await saveDb(); toast('הנעילה הוסרה'); render();
+}
+function lockCard() {
+  const on = !!S.db.settings?.modLock?.hash;
+  return `<div class="card"><h2>🔒 נעילת הגשת חשבונות משהב״ט</h2>
+    <p class="small">${on ? '<span style="color:var(--good)">✓ הנעילה פעילה.</span> כל מי שנכנס לחלק הזה (בכל מכשיר) צריך להזין קוד. חשבונות המתכננים בפרויקטים נשארים פתוחים.' : 'כרגע אין נעילה - כל מי שפותח את האתר יכול להיכנס.'}</p>
+    <div class="row"><input id="lockNew" type="password" placeholder="${on ? 'קוד חדש' : 'קוד'}" autocomplete="new-password" style="width:150px"><input id="lockNew2" type="password" placeholder="שוב, לאימות" autocomplete="new-password" style="width:150px">
+      <button class="primary" onclick="setModLock()">${on ? 'החלף קוד' : 'הפעל נעילה'}</button>${on ? '<button class="danger" onclick="removeModLock()">הסר נעילה</button>' : ''}</div>
+    <p class="small muted">הקוד נשמר מוצפן (hash) ולא ניתן לשחזר אותו - אם שכחת, אפשר להחליף אותו מכאן כשאתה מחובר. זו נעילה של האתר ולא של מסד הנתונים עצמו.</p></div>`;
 }
 function setModule(m) { S.module = m; remember(); render(); }
 function render() {
   renderChips();
   const nAl = projAlerts().filter(a => a.level !== 'info').length;
-  const modSwitch = `<div class="modSwitch"><button class="${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">הגשת חשבונות משהב״ט</button><button class="${S.module === 'proj' ? 'on' : ''}" onclick="setModule('proj')">חשבונות מתכננים בפרויקטים${nAl ? ` <span class="badge">${nAl}</span>` : ''}</button></div>`;
+  const modSwitch = `<div class="modSwitch"><button class="${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">${modLocked() ? '🔒 ' : ''}הגשת חשבונות משהב״ט</button><button class="${S.module === 'proj' ? 'on' : ''}" onclick="setModule('proj')">חשבונות מתכננים בפרויקטים${nAl ? ` <span class="badge">${nAl}</span>` : ''}</button></div>`;
   if (S.module === 'proj') { $('#tabs').innerHTML = modSwitch + PTABS.map(([k, t]) => `<button class="${S.ptab === k ? 'active' : ''}" onclick="S.ptab='${k}';remember();render()">${t}</button>`).join(''); return renderProj($('#view')); }
-  $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => `<button class="${S.tab === k ? 'active' : ''}" onclick="S.tab='${k}';remember();render()">${t}</button>`).join('');
+  if (modLocked()) { $('#tabs').innerHTML = modSwitch; $('#view').innerHTML = lockScreen(); setTimeout(() => $('#lockIn')?.focus(), 50); return; }
+  $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => `<button class="${S.tab === k ? 'active' : ''}" onclick="S.tab='${k}';remember();render()">${t}</button>`).join('') + (S.db.settings?.modLock?.hash ? `<button class="ghost" title="נעל את הגשת החשבונות" onclick="lockNow()">🔒 נעל</button>` : '');
   if (!fsSupported() && !['people', 'orders', 'tools'].includes(S.tab)) { $('#view').innerHTML = `<div class="card"><h2>📱 הגשת חשבונות משהב״ט - מהמחשב בלבד</h2><p>החלק הזה קורא ושומר קבצים בתיקיות העובדים (דוחות שעות, חשבונות Excel ו-PDF), ולכן עובד רק במחשב בדפדפן Chrome או Edge.</p><p>בנייד אפשר לצפות ב<b>עובדים</b> וב<b>הזמנות</b>, ולעבוד באופן מלא על <b>חשבונות מתכננים בפרויקטים</b>.</p><button class="primary" onclick="setModule('proj')">מעבר לחשבונות מתכננים בפרויקטים</button></div>`; return; }
   const v = $('#view');
   if (fsSupported() && (!S.root || S.rootPerm !== 'granted') && !['people', 'orders', 'tools'].includes(S.tab)) {
@@ -1698,7 +1739,7 @@ async function stepMerge(manualFile) {
 
 /* ---------------------------------------------------------------- tools */
 function viewTools(v) {
-  v.innerHTML = cloudCard() + `<div class="grid2">
+  v.innerHTML = lockCard() + cloudCard() + `<div class="grid2">
   <div class="card"><h2>תיקיית בסיס</h2>
     ${!fsSupported() ? '<div class="alert bad">הדפדפן הזה לא תומך בגישה לתיקיות. יש לפתוח את האתר ב-Google Chrome או Microsoft Edge במחשב.</div>' : `
     <p>${S.root ? `נבחרה: <b>${esc(S.root.name)}</b> ${S.rootPerm === 'granted' ? '<span class="pill ok">✓ גישה מאושרת</span>' : '<span class="pill missing">נדרש אישור</span>'}` : 'לא נבחרה תיקייה.'}</p>
