@@ -1068,8 +1068,19 @@ function labelTables(root) {
 }
 new MutationObserver(() => { clearTimeout(labelTables._t); labelTables._t = setTimeout(() => labelTables(), 30); }).observe(document.body, {childList: true, subtree: true});
 const isMobile = () => window.matchMedia('(max-width: 700px)').matches || !('showDirectoryPicker' in window) && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-function modal(title, body, actions) { $('#modalRoot').innerHTML = `<div class="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal"><h2>${esc(title)}</h2>${body}<div class="actions">${actions}</div></div></div>`; }
-function closeModal() { $('#modalRoot').innerHTML = ''; if (rerenderPending) { rerenderPending = false; render(); } }
+let modalDirty = false;
+function modal(title, body, actions) { modalDirty = false; $('#modalRoot').innerHTML = `<div class="modalBg" onmousedown="window.__bgDown=(event.target===this)" onclick="if(event.target===this&&window.__bgDown)tryCloseModal()"><div class="modal"><h2>${esc(title)}</h2>${body}<div class="actions">${actions}</div></div></div>`; }
+function closeModal() { modalDirty = false; $('#modalRoot').innerHTML = ''; if (rerenderPending) { rerenderPending = false; render(); } }
+// סגירה "רכה" (Esc / לחיצה בחוץ / ביטול): אם הוקלד משהו - לא נסגר בלי אישור
+function tryCloseModal(fromKey) {
+  if (!$('#modalRoot').innerHTML) return;
+  if (!modalDirty) return closeModal();
+  if (fromKey) return toast('יש שינויים שלא נשמרו - החלון לא נסגר. לסגירה: "ביטול"', true);
+  if (confirm('יש שינויים שלא נשמרו. לסגור בלי לשמור?')) closeModal();
+}
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#modalRoot')) modalDirty = true; }, true);
+document.addEventListener('change', e => { if (e.target.closest && e.target.closest('#modalRoot')) modalDirty = true; }, true);
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('#modalRoot .modal button') && !/closeModal|save|delete/i.test(e.target.closest('button').getAttribute('onclick') || '')) modalDirty = true; }, true);
 function formVals(root) {
   const o = {};
   root.querySelectorAll('[data-k]').forEach(el => {
@@ -1201,7 +1212,7 @@ function editPerson(id, prefill) {
     <label class="wide">תבנית דוח שעות (טופס 23.031 של העובד - משמשת ליצירת דוח מקובץ נוכחות)
       <div class="row">${p.reportTemplateName ? `<span class="pill ok">✓ ${bdi(p.reportTemplateName)}</span>` : '<span class="small muted">לא הועלתה (אפשר גם להשתמש בדוח של החודש הקודם)</span>'}
         ${id ? `<button type="button" class="small" onclick="uploadReportTemplate('${id}')">${p.reportTemplateName ? 'החלף' : 'העלה תבנית'}</button>` : '<span class="small muted">(אחרי השמירה)</span>'}</div></label></div>`,
-    `<button class="primary" onclick="savePerson('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` +
+    `<button class="primary" onclick="savePerson('${id || ''}')">שמור</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>` +
     (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteRec('people','${id}')">מחק עובד</button>` : ''));
   if (p.folder?.length && rootReady()) showMonths(p.folder);
 }
@@ -1264,7 +1275,7 @@ function editOrder(id, prefill) {
     <div class="row">${o.templateName ? `<span class="pill ok">✓ ${bdi(o.templateName)}</span>` : '<span class="muted small">נדרשת רק לחשבון מס׳ 1. מחשבון 2 והלאה החשבון הקודם משמש בסיס.</span>'}
       ${id ? `<button class="small" onclick="uploadTemplate('${id}')">${o.templateName ? 'החלף תבנית' : 'העלה תבנית'}</button>` : '<span class="muted small">(אפשר להעלות אחרי השמירה)</span>'}</div>
     ${hist ? `<details><summary>היסטוריית גרסאות (${o.versions.length})</summary><ul class="small">${hist}</ul></details>` : ''}`,
-    `<button class="primary" onclick="saveOrder('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` +
+    `<button class="primary" onclick="saveOrder('${id || ''}')">שמור</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>` +
     (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteRec('orders','${id}')">מחק הזמנה</button>` : ''));
   window.__orderPrefill = prefill || null;
 }
@@ -1424,7 +1435,7 @@ function attModal() {
     <div class="row small" style="margin-bottom:6px"><a href="#" onclick="ATT.att.rows.forEach((x,i)=>!x.issues.length&&ATT.sel.add(i)); attModal(); return false">סמן הכל</a> · <a href="#" onclick="ATT.sel.clear(); attModal(); return false">נקה הכל</a> · <a href="#" onclick="attAddRow(); return false">+ הוסף רשומה ידנית</a> · <span class="muted">שעות הכניסה והיציאה והתיאור ניתנים לעריכה; רשומה שחסרה בה שעה תיפתח לסימון אחרי שתשלים אותה</span></div>
     <div class="tableWrap" style="max-height:48vh"><table><thead><tr><th></th><th>תאריך</th><th>יום</th><th>כניסה</th><th>יציאה</th><th>סה״כ</th><th>תיאור</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div id="attFoot"></div>`,
-    `<button class="primary" ${ATT.tplBuf ? '' : 'disabled'} onclick="attBuild()">צור דוח שעות</button><button class="ghost" onclick="closeModal()">ביטול</button>`);
+    `<button class="primary" ${ATT.tplBuf ? '' : 'disabled'} onclick="attBuild()">צור דוח שעות</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>`);
   attFooter();
 }
 function attIssueHtml(x) {
@@ -2049,7 +2060,7 @@ async function savePSettings() { const x = formVals($('#psf')); S.db.settings = 
 function editProject(id) {
   const p = id ? {...projById(id)} : {};
   modal(id ? 'עריכת פרויקט' : 'פרויקט חדש', `<div class="form" id="prf">${fld('name', 'שם הפרויקט', p.name, {ph: 'מרכז מסחרי קרית מוצקין'})}${fld('client', 'מזמין / יזם', p.client)}${fld('code', 'מספר / קוד פרויקט', p.code, {ltr: true})}${fld('notes', 'הערות', p.notes, {wide: true})}</div>`,
-    `<button class="primary" onclick="saveProject('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteProject('${id}')">מחק פרויקט</button>` : ''));
+    `<button class="primary" onclick="saveProject('${id || ''}')">שמור</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteProject('${id}')">מחק פרויקט</button>` : ''));
 }
 async function saveProject(id) { const x = formVals($('#prf')); if (!x.name) return toast('חובה שם פרויקט', true); const r = upsert('projects', id ? {...projById(id), ...x} : x, 'proj'); await saveDb(); closeModal(); S.projectId = r.id; S.ptab = 'projects'; remember(); render(); return r; }
 async function deleteProject(id) {
@@ -2057,7 +2068,16 @@ async function deleteProject(id) {
   const eids = engsOf(id).map(e => e.id); removeRecs('bills', b => eids.includes(b.engagementId)); removeRecs('engagements', e => e.projectId === id); removeRecs('projects', p => p.id === id);
   S.projectId = null; S.engId = null; await saveDb(); closeModal(); render();
 }
-function msRowHtml(m) { return `<tr data-ms="${esc(m.id || uid('ms'))}"><td><input data-f="name" value="${esc(m.name || '')}" style="width:100%;min-width:220px"></td><td><input data-f="percent" class="num" value="${esc(m.percent ?? '')}" style="width:70px" oninput="engFormCalc()"></td><td class="n msAmt"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
+function msRowHtml(m) { return `<tr data-ms="${esc(m.id || uid('ms'))}"><td><input data-f="name" value="${esc(m.name || '')}" style="width:100%;min-width:220px"></td><td><input data-f="percent" class="num" value="${esc(m.percent ?? '')}" style="width:70px" oninput="engFormCalc()"></td><td><input class="num msAmt" style="width:110px" placeholder="₪" oninput="msAmtInput(this)"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
+// הקלדת סכום לשלב => האחוז מחושב לבד מתוך שכר הטרחה
+function msAmtInput(el) {
+  const fee = Number((document.querySelector('#enf [data-k=fee]')?.value || '').replace(/,/g, '')) || 0, P = el.closest('tr').querySelector('[data-f=percent]');
+  const a = Number(el.value.replace(/[,₪\s]/g, ''));
+  if (el.value.trim() === '') P.value = '';
+  else if (!fee) { toast('כדי לחשב אחוז מהסכום - מלא קודם שכר טרחה', true); return; }
+  else if (!isNaN(a)) P.value = Math.round(a / fee * 100 * 1e6) / 1e6;
+  engFormCalc(el);
+}
 function exRowHtml(x) { return `<tr data-ex><td><input data-f="name" value="${esc(x.name || '')}" style="width:100%;min-width:200px"></td><td><input data-f="unit" class="num" value="${esc(x.unit ?? '')}" style="width:90px" placeholder="מחיר ליחידה"></td><td><input data-f="amount" class="num" value="${esc(x.amount ?? '')}" style="width:100px" placeholder="סכום מאושר" oninput="engFormCalc()"></td><td><button class="small ghost" onclick="this.closest('tr').remove();engFormCalc()">✕</button></td></tr>`; }
 function editEng(id, projectId, prefill) {
   const e = id ? JSON.parse(JSON.stringify(engById(id))) : {projectId, feeType: 'milestones', terms: {type: 'eom', days: 30}, milestones: [], extras: [], ...(prefill || {})};
@@ -2074,20 +2094,21 @@ function editEng(id, projectId, prefill) {
       <label>תנאי תשלום<div class="row" style="flex-wrap:nowrap"><select id="enTermsType"><option value="eom" ${e.terms?.type === 'eom' ? 'selected' : ''}>שוטף +</option><option value="days" ${e.terms?.type === 'days' ? 'selected' : ''}>ימים מקבלת החשבונית</option></select><input id="enTermsDays" class="num" value="${esc(e.terms?.days ?? 30)}" style="width:60px"></div></label>
       ${fld('vat', 'מע״מ %', Math.round((e.vat ?? 0.18) * 100), {num: true})}</div>
     <h3>אבני דרך לתשלום (אחוז משכר הטרחה)</h3>
-    <div class="tableWrap"><table id="msT"><thead><tr><th>שלב</th><th>%</th><th>סכום</th><th></th></tr></thead><tbody>${(e.milestones || []).map(msRowHtml).join('')}</tbody></table></div>
+    <div class="tableWrap"><table id="msT"><thead><tr><th>שלב</th><th>%</th><th>סכום ₪ (אפשר להקליד - האחוז יחושב)</th><th></th></tr></thead><tbody>${(e.milestones || []).map(msRowHtml).join('')}</tbody></table></div>
     <div class="row" style="margin-top:6px"><button class="small" onclick="document.querySelector('#msT tbody').insertAdjacentHTML('beforeend', msRowHtml({}));engFormCalc()">+ שלב</button><span id="msSum" class="small"></span></div>
     <h3>תוספות (ביקורים נוספים, שינויים וכו׳)</h3>
     <div class="tableWrap"><table id="exT"><thead><tr><th>תיאור</th><th>מחיר ליחידה</th><th>סכום שאושר (נכנס לשכ״ט)</th><th></th></tr></thead><tbody>${(e.extras || []).map(exRowHtml).join('')}</tbody></table></div>
     <div class="row" style="margin-top:6px"><button class="small" onclick="document.querySelector('#exT tbody').insertAdjacentHTML('beforeend', exRowHtml({}))">+ תוספת</button></div>
     <label style="margin-top:10px;display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">הערות<input id="enNotesIn" value="${esc(e.notes || '')}"></label>
     ${e.sourceFile ? `<div class="small muted">יובא מ: ${bdi(e.sourceFile)}</div>` : ''}`,
-    `<button class="primary" onclick="saveEng('${id || ''}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteEng('${id}')">מחק${hasBills ? ' (כולל החשבונות)' : ''}</button>` : ''));
-  window.__engPrefill = prefill || null; engFormCalc();
+    `<button class="primary" onclick="saveEng('${id || ''}')">שמור</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteEng('${id}')">מחק${hasBills ? ' (כולל החשבונות)' : ''}</button>` : ''));
+  window.__engPrefill = prefill || null; engFormCalc(); document.querySelector('#enf [data-k=fee]')?.addEventListener('input', () => engFormCalc());
 }
-function engFormCalc() {
-  const fee = Number((document.querySelector('#enf [data-k=fee]')?.value || '').replace(/,/g, '')) || 0; let sum = 0;
-  document.querySelectorAll('#msT tr[data-ms]').forEach(tr => { const p = Number(tr.querySelector('[data-f=percent]').value) || 0; sum += p; tr.querySelector('.msAmt').textContent = money(r2(fee * p / 100)); });
-  const el = $('#msSum'); if (el) el.innerHTML = document.querySelectorAll('#msT tr[data-ms]').length ? `סה״כ: <b style="color:${Math.abs(sum - 100) < 0.01 ? 'var(--good)' : 'var(--bad)'}">${qty(sum)}%</b>${Math.abs(sum - 100) < 0.01 ? '' : ' (צריך 100%)'}` : '';
+function engFormCalc(skipEl) {
+  const fee = Number((document.querySelector('#enf [data-k=fee]')?.value || '').replace(/,/g, '')) || 0; let sum = 0, amtSum = 0;
+  document.querySelectorAll('#msT tr[data-ms]').forEach(tr => { const pv = tr.querySelector('[data-f=percent]').value, p = Number(pv) || 0, A = tr.querySelector('.msAmt'); sum += p; const amt = r2(fee * p / 100); amtSum += amt;
+    if (A !== skipEl) A.value = pv === '' || !fee ? '' : amt.toLocaleString('en-US', {maximumFractionDigits: 2}); });
+  const el = $('#msSum'); if (el) el.innerHTML = document.querySelectorAll('#msT tr[data-ms]').length ? `סה״כ: <b style="color:${Math.abs(sum - 100) < 0.01 ? 'var(--good)' : 'var(--bad)'}">${qty(sum)}%</b>${fee ? ` · ${money(r2(amtSum))} מתוך ${money(fee)}` : ''}${Math.abs(sum - 100) < 0.01 ? '' : ` (צריך 100%${fee ? ` · חסר ${money(r2(fee - amtSum))}` : ''})`}` : '';
 }
 async function saveEng(id) {
   const x = formVals($('#enf')); const notesEl = $('#enNotesIn');
@@ -2112,7 +2133,7 @@ function importQuote(projectId) {
       else { const name = prompt('שם הפרויקט (ייווצר פרויקט חדש):', q.projGuess || ''); if (!name) return; pid = upsert('projects', {name: name.trim()}, 'proj').id; await saveDb(); }
     }
     editEng(null, pid, {discipline: q.discipline, company: q.company, email: q.email, quoteNo: q.quoteNo, quoteDate: q.date, fee: q.fee, terms: q.terms || {type: 'eom', days: 30},
-      milestones: q.milestones, extras: q.extras, sourceFile: q.file, feeType: 'milestones', notes: q.subject ? 'הנדון: ' + q.subject : ''});
+      milestones: q.milestones, extras: q.extras, sourceFile: q.file, feeType: 'milestones', notes: q.subject ? 'הנדון: ' + q.subject : ''}); modalDirty = true;
     toast(`נקראה הצעת המחיר: שכ״ט ${q.fee ? money(q.fee) : 'לא נמצא'}, ${q.milestones.length} אבני דרך (${qty(q.milestonesSum)}%), ${q.terms ? termsText(q.terms) : 'תנאי תשלום לא צוינו בהצעה - הוגדר שוטף + 30'} - בדוק והשלם`);
   }, 'קורא את הצעת המחיר…'));
 }
@@ -2145,7 +2166,7 @@ function editBill(id, engId) {
     ${stage('tax', 4, 'התקבלה חשבונית מס', txtF('tax', 'no', 'מספר חשבונית מס', bill.tax?.no, 1) + dateF('tax', 'date', 'תאריך', bill.tax?.date))}
     <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);margin-top:10px">הערות<input id="bNotes" value="${esc(bill.notes || '')}"></label>
     <div class="small muted" style="margin-top:6px">מועד תשלום לפי ההצעה (${esc(termsText(e.terms))}): <b id="bDue"></b></div>`,
-    `<button class="primary" onclick="saveBill('${id || ''}','${e.id}')">שמור</button><button class="ghost" onclick="closeModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteBill('${id}')">מחק חשבון</button>` : ''));
+    `<button class="primary" onclick="saveBill('${id || ''}','${e.id}')">שמור</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteBill('${id}')">מחק חשבון</button>` : ''));
   document.querySelectorAll('tr[data-bm]').forEach(tr => { if (tr.querySelector('.bmP').value !== '') billCalc('p', tr.querySelector('.bmP')); });
   const dd = document.querySelector('[data-st="deal.date"]'); if (dd) dd.addEventListener('change', () => billCalc());
   window.__billEng = e.id; billCalc();
@@ -2192,7 +2213,7 @@ async function deleteBill(id) { if (!confirm('למחוק את החשבון?')) r
   if (fbUrl()) { await cloudSync(); setInterval(cloudPoll, 20000); window.addEventListener('focus', cloudPoll); }
   else setInterval(() => { if (fbUrl()) cloudPoll(); }, 20000);
 })();
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); tryCloseModal(true); } });
 window.__atlas = {parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
 </script>
 </body>
