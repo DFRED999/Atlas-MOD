@@ -139,6 +139,15 @@
   .pcard:hover{border-color:var(--accent);}
   .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
   @media (max-width:800px){ .grid2{grid-template-columns:1fr;} main{padding:12px;} header.top{padding:12px;} nav.tabs{padding:10px 12px 0;} }
+.ordT thead th{background:#e8ecf7;color:#1c2b2a} .ordT td{vertical-align:middle} .ordT .ubar{height:4px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;min-width:120px}
+  .ordT .ubar i{display:block;height:100%} .ordT .ubar i.ok{background:#15803d} .ordT .ubar i.mid{background:#c9a227} .ordT .ubar i.bad{background:#b42318}
+  .ordT td.remLow{color:#b8860b;font-weight:700} .ordT td.daysBad{background:#c62828;color:#fff;font-weight:700} .ordT td.daysOut{color:var(--muted);text-decoration:line-through}
+  .ordT tfoot td{background:var(--paper-2);border-top:2px solid var(--ink)}
+  .rptBar{display:flex;justify-content:flex-end;margin:0 0 6px}
+  .rptTree{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  .rptProj{padding:4px 0;border-bottom:1px dashed var(--line)} .rptProj:last-child{border:none} .rptEngs{padding-inline-start:22px;display:flex;flex-direction:column}
+  label.chk{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:13px;cursor:pointer} label.chk input{width:auto;min-height:0;margin:0}
+  .rptSecs{display:flex;flex-direction:column}
   @media (max-width:700px){
     body{font-size:14px;}
     header.top{padding:10px 12px;gap:6px;} header.top h1{font-size:16px;} header.top .sub{display:none;}
@@ -1135,7 +1144,7 @@ function fld(k, label, v, opt = {}) {
   const t = opt.type || 'text', cls = opt.wide ? 'wide' : '';
   if (t === 'select') return `<label class="${cls}">${label}<select data-k="${k}">${opt.options.map(([val, txt]) => `<option value="${esc(val)}" ${String(val) === String(v ?? '') ? 'selected' : ''}>${esc(txt)}</option>`).join('')}</select></label>`;
   if (t === 'checkbox') return `<label style="flex-direction:row;align-items:center;gap:6px;margin-top:18px;"><input type="checkbox" data-k="${k}" ${v !== false ? 'checked' : ''}> ${label}</label>`;
-  return `<label class="${cls}">${label}<input data-k="${k}" ${opt.num ? 'data-t="num"' : ''} type="${t === 'date' ? 'date' : 'text'}" value="${esc(v ?? '')}" class="${opt.num || opt.ltr ? 'num' : ''}" ${opt.ph ? `placeholder="${esc(opt.ph)}"` : ''}></label>`;
+  return `<label class="${cls}">${label}<input data-k="${k}" ${opt.num ? 'data-t="num"' : ''} type="${t === 'date' || t === 'month' ? t : 'text'}" value="${esc(v ?? '')}" class="${opt.num || opt.ltr ? 'num' : ''}" ${opt.ph ? `placeholder="${esc(opt.ph)}"` : ''}></label>`;
 }
 function pickFile(accept, cb) { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => i.files[0] && cb(i.files[0]); i.click(); }
 function stepsHtml(steps) { return `<ul class="steps">` + (steps || []).map(s => { const c = s.ok === true ? 'ok' : s.ok === false ? 'bad' : 'warn'; return `<li class="${c}"><span class="ic">${s.ok === true ? '✓' : s.ok === false ? '✗' : '!'}</span><span>${esc(s.text)}</span></li>`; }).join('') + `</ul>`; }
@@ -1146,7 +1155,7 @@ function setPerson(v) { S.personId = v || null; S.scan = null; S.prep = null; re
 function download(bytes, name, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], {type})); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
 
 /* ===================================================================== render */
-const TABS = [['report', 'דיווח והכנת חיוב'], ['produce', 'הפקת חשבון'], ['summary', 'ריכוז חודשי'], ['people', 'עובדים'], ['orders', 'הזמנות'], ['tools', 'הגדרות וגיבוי']];
+const TABS = [['people', 'עובדים'], ['orders', 'הזמנות'], ['report', 'דיווח והכנת חיוב'], ['produce', 'הפקת חשבון'], ['summary', 'ריכוז חודשי'], ['tools', 'הגדרות וגיבוי']];
 function renderChips() {
   let h = '';
   if (!fsSupported()) h += S.module === 'proj' ? '' : `<span class="chip bad">✗ הגשת חשבונות משהב״ט - מהמחשב בלבד</span>`;
@@ -1275,21 +1284,51 @@ function importPersonFromReport() {
 }
 
 /* ---------------------------------------------------------------- orders */
+// ניצול הזמנה: המצטבר בחשבון האחרון שהופק במערכת (כולל היסטוריה מהחשבון הקודם), ועוד חודשים מאוחרים יותר; אחרת ניצול ידני + השיוכים שאחריו
+function orderUsage(o) {
+  const reps = S.db.reports.filter(r => r.orderId === o.id).sort((a, b) => a.month.localeCompare(b.month));
+  const amt = r => r2(repLinesOf(r, o).reduce((a, x) => { const l = linesOf(o).find(y => y.type === x.type && String(y.itemNo ?? '') === String(x.itemNo ?? '')) || lineOf(o, x.type, r.month); return a + (Number(x.qty) || 0) * (l.rate || 0); }, 0));
+  const last = [...reps].reverse().find(r => r.review?.length);
+  if (last) return {used: r2(last.review.reduce((a, x) => a + (Number(x.cumulative) || 0), 0) + reps.filter(r => r.month > last.month).reduce((a, r) => a + amt(r), 0)), src: `חשבון ${last.invoiceNo || ''} (${monthLabel(last.month)})`};
+  const base = Number(o.usedBase) || 0, asOf = o.usedAsOf || '';
+  return {used: r2(base + reps.filter(r => !asOf || r.month > asOf).reduce((a, r) => a + amt(r), 0)), src: base ? `ידני${asOf ? ' עד ' + monthLabel(asOf) : ''} + שיוכים` : 'שיוכים במערכת'};
+}
+const branchShort = b => { const t = String(b || '').trim(); const m = /ענף\s+(.+)$/.exec(t); return m ? m[1].trim() : t; };
+function orderRows() {
+  const today = todayIso(), f = S.ordFilter || (S.ordFilter = {q: '', hideExpired: true, sort: 'days'});
+  let list = S.db.orders.map(o => { const p = personById(o.personId), ls = linesOf(o); const budget = r2(ls.reduce((a, l) => a + (Number(l.budget) || 0), 0)); const u = orderUsage(o);
+    return {o, p, budget, used: u.used, src: u.src, remain: r2(budget - u.used), pct: budget ? u.used / budget : 0, days: o.validTo ? daysBetween(today, o.validTo) : null}; });
+  if (f.hideExpired) list = list.filter(x => x.days === null || x.days >= 0);
+  const q = f.q.trim(); if (q) list = list.filter(x => [x.o.number, x.p?.name, x.o.branch, x.o.site].some(t => String(t || '').includes(q)));
+  const by = {days: (a, b) => (a.days ?? 1e9) - (b.days ?? 1e9), number: (a, b) => String(a.o.number).localeCompare(String(b.o.number)), person: (a, b) => (a.p?.name || '').localeCompare(b.p?.name || '', 'he'), pct: (a, b) => b.pct - a.pct}[f.sort];
+  return list.sort(by);
+}
 function viewOrders(v) {
-  const rows = people().map(p => { const os = ordersOf(p.id); if (!os.length) return '';
-    return `<tr><td colspan="8" style="background:var(--head);font-weight:700">${esc(p.name)}</td></tr>` + os.map(o => {
-      const ls = linesOf(o); const periods = [...new Set(ls.map(l => l.to || ''))].length;
-      const sum = t => ls.filter(l => l.type === t).reduce((a, l) => a + (Number(l.budget) || 0), 0);
-      const cur = lineOf(o, 'hours', S.month);
-      return `<tr class="clickable" onclick="editOrder('${o.id}')"><td class="n"><b>${esc(o.number)}</b></td><td>${esc(o.version ?? '')}</td><td>${esc(o.branch)}</td><td class="n">${dateHe(o.validFrom)} – ${dateHe(o.validTo)}</td>
-        <td>${ls.length} שורות${periods > 1 ? ` · ${periods} תקופות` : ''}<div class="small muted">${ls.map(l => l.itemNo).filter(Boolean).join(', ')}</div></td>
-        <td class="n">${money(cur.rate)}</td><td class="n">${money(sum('hours'))}<div class="small muted">ק״מ: ${money(sum('km'))}</div></td>
-        <td>${o.templateName ? '<span class="pill ok">✓ תבנית</span>' : '<span class="pill missing">אין תבנית</span>'}</td></tr>`; }).join(''); }).join('');
-  v.innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">הזמנות עבודה</h2>
-    <div class="row"><button onclick="importOrderPdf()">ייבוא מ-PDF הזמנה</button><button class="primary" onclick="editOrder()">+ הזמנה חדשה</button></div></div>
-    <p class="muted small" style="margin:8px 0 0">"ייבוא מ-PDF" קורא את מסמך ההזמנה של משהב״ט, כולל כל השורות והתקופות. גרסה חדשה (הזמנת המשך) מעדכנת את ההזמנה הקיימת ומוסיפה את השורות החדשות; הגרסה הקודמת נשמרת בהיסטוריה.</p></div>
-  <div class="tableWrap"><table><thead><tr><th>מספר הזמנה</th><th>גרסה</th><th>גוף דורש</th><th>תוקף</th><th>שורות</th><th>תעריף שעה</th><th>תקציב שעות</th><th>תבנית 23.030</th></tr></thead>
-  <tbody>${rows || `<tr><td colspan="8" class="empty">אין הזמנות עדיין.</td></tr>`}</tbody></table></div>`;
+  const f = S.ordFilter || (S.ordFilter = {q: '', hideExpired: true, sort: 'days'}), warn = psettings().orderWarnDays ?? 30;
+  const list = orderRows(); const tot = k => r2(list.reduce((a, x) => a + x[k], 0));
+  const barCls = x => x.pct >= 1 ? 'bad' : x.pct >= 0.85 ? 'mid' : 'ok';
+  const rows = list.map((x, i) => `<tr class="clickable" onclick="editOrder('${x.o.id}')"><td class="n">${i + 1}</td><td class="n"><b>${esc(x.o.number)}</b>${x.o.version ? `<div class="small muted">גרסה ${esc(x.o.version)}</div>` : ''}</td>
+    <td>${esc(branchShort(x.o.branch))}</td><td><b>${esc(x.p?.name || '—')}</b>${x.o.site ? ` <span class="small muted">· ${esc(x.o.site)}</span>` : ''}</td><td class="n">${num(x.budget, 2)}</td>
+    <td class="ordUse" title="מקור: ${esc(x.src)}"><div>${num(x.used, 2)} <span class="muted">(${Math.round(x.pct * 100)}%)</span></div><div class="ubar"><i class="${barCls(x)}" style="width:${Math.min(100, x.pct * 100)}%"></i></div></td>
+    <td class="n ${x.pct >= 0.85 ? 'remLow' : ''}">${num(x.remain, 2)}</td><td class="n">${dateHe(x.o.validFrom)}</td><td class="n">${dateHe(x.o.validTo)}</td>
+    <td class="n ${x.days !== null && x.days < 0 ? 'daysOut' : x.days !== null && x.days <= warn ? 'daysBad' : ''}">${x.days === null ? '—' : x.days < 0 ? `פג לפני ${-x.days} ימים` : `${x.days} ימים`}</td></tr>`).join('');
+  v.innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">${ico('clip')} הזמנות עבודה</h2>
+    <div class="row"><input placeholder="חיפוש: מספר / עובד / ענף" value="${esc(f.q)}" oninput="S.ordFilter.q=this.value;clearTimeout(window.__oq);window.__oq=setTimeout(()=>{render();const i=document.querySelector('#ordQ');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" id="ordQ" style="width:200px">
+      <select onchange="S.ordFilter.sort=this.value;render()">${[['days', 'מיון: הכי קרוב לסיום'], ['number', 'מיון: מספר הזמנה'], ['person', 'מיון: עובד'], ['pct', 'מיון: % ניצול']].map(([k, t]) => `<option value="${k}" ${f.sort === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <label class="chk"><input type="checkbox" ${f.hideExpired ? 'checked' : ''} onchange="S.ordFilter.hideExpired=this.checked;render()">הסתר הזמנות שפג תוקפן</label>
+      <button class="small" onclick="ordersExcel()">${ico('file')} Excel</button><button onclick="importOrderPdf()">ייבוא מ-PDF הזמנה</button><button class="primary" onclick="editOrder()">+ הזמנה חדשה</button></div></div>
+  <div class="tableWrap" style="margin-top:10px"><table class="rtable ordT"><thead><tr><th>מס״ד</th><th>מספר הזמנה</th><th>ענף</th><th>ספק / עובד</th><th>היקף ההזמנה</th><th>ניצול</th><th>יתרת ההזמנה</th><th>תוקף - התחלה</th><th>תוקף - סוף</th><th>נשאר</th></tr></thead>
+  <tbody>${rows || `<tr><td colspan="10" class="empty">${S.db.orders.length ? 'אין הזמנות לפי הסינון.' : 'אין הזמנות עדיין.'}</td></tr>`}</tbody>
+  ${list.length ? `<tfoot><tr><td colspan="4"><b>סה״כ (${list.length} הזמנות)</b></td><td class="n"><b>${num(tot('budget'), 2)}</b></td><td class="n">${num(tot('used'), 2)}</td><td class="n"><b>${num(tot('remain'), 2)}</b></td><td colspan="3"></td></tr></tfoot>` : ''}</table></div>
+  <p class="small muted" style="margin:8px 0 0">לחיצה על שורה פותחת את ההזמנה לעריכה. "נשאר" נצבע באדום כשנותרו ${warn} ימים או פחות. הניצול מחושב מהמצטבר בחשבון האחרון שהופק (סכומים ללא מע״מ) - מעבר עם העכבר מראה את המקור.</p></div>`;
+}
+function ordersExcel() {
+  const list = orderRows(); const aoa = [['מס״ד', 'מספר הזמנה', 'גרסה', 'ענף', 'עובד', 'פרויקט / אתר', 'היקף ההזמנה', 'ניצול', '% ניצול', 'יתרת ההזמנה', 'תוקף - התחלה', 'תוקף - סוף', 'ימים שנותרו', 'מקור הניצול']];
+  list.forEach((x, i) => aoa.push([i + 1, x.o.number, x.o.version ?? '', branchShort(x.o.branch), x.p?.name || '', x.o.site || '', {t: 'n', v: x.budget, z: '#,##0.00'}, {t: 'n', v: x.used, z: '#,##0.00'}, {t: 'n', v: x.pct, z: '0%'}, {t: 'n', v: x.remain, z: '#,##0.00'},
+    x.o.validFrom ? {t: 'd', v: new Date(x.o.validFrom + 'T00:00:00Z'), z: 'dd/mm/yyyy'} : '', x.o.validTo ? {t: 'd', v: new Date(x.o.validTo + 'T00:00:00Z'), z: 'dd/mm/yyyy'} : '', x.days ?? '', x.src]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa, {cellDates: true}); ws['!cols'] = [6, 15, 6, 12, 16, 14, 15, 15, 8, 15, 12, 12, 10, 22].map(w => ({wch: w})); ws['!autofilter'] = {ref: `A1:N${aoa.length}`};
+  const wb = XLSX.utils.book_new(); wb.Workbook = {Views: [{RTL: true}]}; XLSX.utils.book_append_sheet(wb, ws, 'הזמנות');
+  download(XLSX.write(wb, {bookType: 'xlsx', type: 'array'}), `הזמנות משהב״ט ${todayIso().split('-').reverse().join('.')}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 function orderLineRow(l) {
   const inp = (f, v, w, t) => `<input data-f="${f}" ${t === 'date' ? 'type="date"' : 'class="num"'} value="${esc(v ?? '')}" style="width:${w}px">`;
@@ -1305,7 +1344,9 @@ function editOrder(id, prefill) {
     ${fld('personId', 'עובד', o.personId, {type: 'select', options: [['', '— בחר —'], ...people().map(p => [p.id, p.name])]})}
     ${fld('number', 'מספר הזמנה', o.number, {ltr: true, ph: '444-142-9536'})}${fld('version', 'גרסה', o.version, {ltr: true})}
     ${fld('branch', 'גוף דורש (כפי שבחשבון)', o.branch, {ph: "אהו''ב - ענף דרום"})}${fld('validFrom', 'תחילת תוקף', o.validFrom, {type: 'date'})}
-    ${fld('validTo', 'סוף תוקף', o.validTo, {type: 'date'})}${fld('protocol', "מס' החלטה / פרוטוקול", o.protocol, {ltr: true})}</div>
+    ${fld('validTo', 'סוף תוקף', o.validTo, {type: 'date'})}${fld('protocol', "מס' החלטה / פרוטוקול", o.protocol, {ltr: true})}${fld('site', 'פרויקט / אתר (לתצוגה)', o.site, {ph: 'עידן חדש'})}
+    ${fld('usedBase', 'ניצול מחשבונות שלפני המערכת (₪, ללא מע״מ)', o.usedBase, {num: true})}${fld('usedAsOf', 'נכון לסוף חודש', o.usedAsOf, {type: 'month'})}</div>
+    <div class="small muted">ניצול ההזמנה מחושב מהמצטבר בחשבון האחרון שהופק במערכת. אם עוד לא הופק חשבון במערכת - מהסכום הידני כאן ועוד החודשים שאחריו.</div>
     <h3>שורות ההזמנה (פריטים)</h3>
     <div class="tableWrap"><table id="olines"><thead><tr><th>פריט</th><th>סוג</th><th>מתאריך</th><th>עד תאריך</th><th>תעריף</th><th>כמות מאושרת</th><th>תקציב (ללא מע״מ)</th><th>ק״מ ליום</th><th>שעות לחודש</th><th></th></tr></thead>
       <tbody>${linesOf(o).map(orderLineRow).join('')}</tbody></table></div>
@@ -1691,7 +1732,7 @@ function viewSummary(v) {
         <td>${x.type === 'hours' ? 'שעות' : 'ק״מ'}${x.itemNo ? ` <span class="small muted">פריט ${esc(x.itemNo)}</span>` : ''}</td><td class="n">${qty(x.qty)}</td><td class="n">${money(rate)}</td>
         <td class="n">${money(r2(prevQ * rate))}</td><td class="n"><b>${money(cur)}</b></td><td class="n">${money(r2(prevQ * rate + cur))}</td>
         ${i === 0 ? `<td rowspan="${ls.length}"><span class="pill ${r.status === 'הופק' ? 'ok' : 'missing'}">${esc(r.status || 'טיוטה')}</span>${r.invoiceNo ? `<div class="small">חשבון ${r.invoiceNo}</div>` : ''}</td>` : ''}</tr>`; }).join(''); }).join('');
-  v.innerHTML = `<div class="card"><div class="row"><h2 style="margin:0">ריכוז חיוב חודשי</h2><span style="margin-inline-start:12px">${monthNav()}</span></div>
+  v.innerHTML = `<div class="card"><div class="row"><h2 style="margin:0">ריכוז חיוב חודשי</h2><span style="margin-inline-start:12px">${monthNav()}</span><button class="small" style="margin-inline-start:auto" onclick="openReport('mod')">${ico('report')} הפק דוח</button></div>
     <p class="small muted" style="margin:8px 0 0">"מצטבר קודם" כאן מחושב מהשיוכים שבמערכת, לכל פריט בנפרד. בהפקת החשבון המצטבר נלקח מהחשבון הקודם עצמו (המקור המחייב).</p></div>
     <div class="stats"><div class="stat"><div class="label">עובדים בחודש</div><div class="value">${reps.length}</div></div><div class="stat good"><div class="label">סה״כ לחודש (ללא מע״מ)</div><div class="value">${money(r2(tot))}</div></div>
       <div class="stat"><div class="label">הופקו</div><div class="value">${reps.filter(r => r.status === 'הופק').length} / ${reps.length}</div></div></div>
@@ -1870,15 +1911,16 @@ const ICONS = {
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a5 5 0 0 1 3.5 6"/>',
   clip: '<path d="M9 4h6v3H9zM7 5.5H5.5V21h13V5.5H17M8.5 12h7M8.5 16h5"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V7a1.7 1.7 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" transform="scale(.83) translate(2.4 2.4)"/>',
+  report: '<path d="M6 3h9l4 4v14H6zM15 3v4h4M9 17v-3M12 17v-6M15 17v-4"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
 };
 const ico = (k, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k] || ''}</svg>`;
-const TAB_ICON = {pdash: 'dash', projects: 'folder', pbills: 'receipt', psettings: 'bell', report: 'clock', produce: 'file', summary: 'chart', people: 'users', orders: 'clip', tools: 'gear'};
+const TAB_ICON = {pdash: 'dash', projects: 'folder', pbills: 'receipt', psettings: 'bell', preports: 'report', report: 'clock', produce: 'file', summary: 'chart', people: 'users', orders: 'clip', tools: 'gear'};
 function tabBtn(k, t, active, onclick) {
   const n = k === 'pdash' ? projAlerts().filter(a => a.level !== 'info').length : 0;
   return `<button class="tabBtn ${k === 'pdash' ? 'dashTab' : ''} ${active ? 'active' : ''}" onclick="${onclick}">${ico(TAB_ICON[k])}<span>${t}</span>${n ? `<span class="badge">${n}</span>` : ''}</button>`;
 }
-const PTABS = [['pdash', 'לוח בקרה'], ['projects', 'פרויקטים ומתכננים'], ['pbills', 'כל החשבונות'], ['psettings', 'הגדרות התראות']];
+const PTABS = [['pdash', 'לוח בקרה'], ['projects', 'פרויקטים ומתכננים'], ['pbills', 'כל החשבונות'], ['preports', 'דוחות'], ['psettings', 'הגדרות התראות']];
 const DISCIPLINES = ['אדריכלות', 'קונסטרוקציה', 'חשמל', 'מיזוג אוויר', 'אינסטלציה', 'מודד', 'אלומיניום', 'אקוסטיקה', 'נוף', 'בטיחות', 'תנועה', 'קרקע וביסוס', 'איטום', 'מעליות', 'קרינה', 'תאורה', 'בקרת תכנון', 'ניהול פרויקט', 'אחר'];
 const DISC_KEYS = [['אלומיניום', /אלומי/], ['אקוסטיקה', /אקוסט/], ['חשמל', /חשמל/], ['מיזוג אוויר', /מיזוג|מיז"א/], ['אינסטלציה', /אינסטל/], ['קונסטרוקציה', /קונסטרוק/], ['מודד', /מדיד|מודד/], ['נוף', /אדריכלות נוף|נוף/], ['אדריכלות', /אדריכל/], ['בטיחות', /בטיחות|כיבוי/], ['תנועה', /תנועה|תחבור/], ['קרקע וביסוס', /קרקע|ביסוס/], ['איטום', /איטום/], ['קרינה', /קרינה/], ['מעליות', /מעלית/]];
 const psettings = () => ({transferDays: 7, dueSoonDays: 7, taxInvoiceDays: 14, ...(S.db.settings?.alerts || {})});
@@ -2032,7 +2074,9 @@ async function parseQuotePdf(buf, fileName) {
 }
 /* --------------------------------------------------------------- views */
 function renderProj(v) {
-  ({pdash: viewPDash, projects: viewProjects, pbills: viewPBills, psettings: viewPSettings})[S.ptab](v);
+  ({pdash: viewPDash, projects: viewProjects, pbills: viewPBills, preports: viewPReports, psettings: viewPSettings})[S.ptab](v);
+  const pre = {pdash: "'dash'", pbills: "'bills'", projects: S.projectId ? `{project:'${S.projectId}'}` : 'null'}[S.ptab];
+  if (pre) v.insertAdjacentHTML('afterbegin', `<div class="rptBar"><button class="small" onclick="openReport(${pre})">${ico('report')} הפק דוח${S.ptab === 'projects' && S.projectId ? ' לפרויקט' : ''}</button></div>`);
 }
 function openBillFromAlert(billId, engId, projectId) { S.ptab = 'projects'; S.projectId = projectId; S.engId = engId; remember(); render(); if (billId) editBill(billId); }
 function alertsTable(list, parked) {
@@ -2122,7 +2166,7 @@ function viewProjects(v) {
   const tot = es.map(engStats).reduce((a, x) => ({fee: a.fee + x.fee, billed: a.billed + x.billed, paid: a.paid + x.paid}), {fee: 0, billed: 0, paid: 0});
   const e = engById(S.engId); const eHtml = e && e.projectId === p.id ? engDetailHtml(e) : '';
   v.innerHTML = `<div class="card"><div class="row spread"><div><a href="#" onclick="S.projectId=null;S.engId=null;remember();render();return false">← כל הפרויקטים</a><h2 style="margin:6px 0 0">${esc(p.name)}</h2><div class="small muted">${esc(p.client || '')} ${p.notes ? '· ' + esc(p.notes) : ''}</div></div>
-      <div class="row"><button class="small" onclick="editProject('${p.id}')">ערוך פרויקט</button><button onclick="importQuote('${p.id}')">ייבוא הצעת מחיר (PDF)</button><button class="primary" onclick="editEng(null,'${p.id}')">+ מתכנן</button></div></div></div>
+      <div class="row"><button class="small" onclick="editProject('${p.id}')">ערוך פרויקט</button><button class="small" onclick="openReport({project:'${p.id}'})">${ico('report')} דוח</button><button onclick="importQuote('${p.id}')">ייבוא הצעת מחיר (PDF)</button><button class="primary" onclick="editEng(null,'${p.id}')">+ מתכנן</button></div></div></div>
     ${fold('engs_' + p.id, 'מתכננים בפרויקט', `<div class="tableWrap"><table class="rtable"><thead><tr><th>דיסציפלינה</th><th>מתכנן / משרד</th><th>מבנה שכ״ט</th><th>שכ״ט (ללא מע״מ)</th><th>חויב</th><th>סה״כ חשבונות</th><th>שולם</th><th>יתרה</th><th>פתוח</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="9" class="empty">אין מתכננים בפרויקט. הוסף מתכנן או ייבא הצעת מחיר.</td></tr>`}
       ${es.length ? `<tr class="total"><td colspan="3">סה״כ פרויקט</td><td class="n">${money(r2(tot.fee))}</td><td>${tot.fee ? qty(tot.billed / tot.fee * 100) : 0}%</td><td class="n">${money(r2(tot.billed))}</td><td class="n">${money(r2(tot.paid))}</td><td class="n">${money(r2(tot.fee - tot.billed))}</td><td></td></tr>` : ''}</tbody></table></div>`, {right: `${es.length} מתכננים · לחיצה על שורה פותחת / סוגרת את פרטי המתכנן`})}
@@ -2142,7 +2186,7 @@ function engDetailHtml(e) {
       ${stageCell(b, 'tax', 'חשבונית מס')}</tr>`; }).join('');
   return `<div class="card" style="margin-top:14px"><div class="row spread"><div><h2 style="margin:0">${esc(e.discipline)} · ${esc(e.company)} <button class="small ghost" title="סגור" onclick="S.engId=null;remember();render()">✕ סגור</button></h2>
       <div class="small muted">${e.quoteNo ? `הצעה ${esc(e.quoteNo)} · ` : ''}${e.quoteDate ? dateHe(e.quoteDate) + ' · ' : ''}${esc(termsText(e.terms))}${e.contact ? ' · ' + esc(e.contact) : ''}${e.phone ? ' · ' + esc(e.phone) : ''}${e.email ? ' · ' + esc(e.email) : ''}</div></div>
-      <div class="row"><button class="small" onclick="editEng('${e.id}')">ערוך מתכנן / הצעה</button><button class="primary" onclick="editBill(null,'${e.id}')">+ חשבון חדש (התקבלה חשבונית עסקה)</button></div></div>
+      <div class="row"><button class="small" onclick="editEng('${e.id}')">ערוך מתכנן / הצעה</button><button class="small" onclick="openReport({eng:'${e.id}'})">${ico('report')} דוח</button><button class="primary" onclick="editBill(null,'${e.id}')">+ חשבון חדש (התקבלה חשבונית עסקה)</button></div></div>
     <div class="stats"><div class="stat"><div class="label">שכר טרחה</div><div class="value">${money(s2.fee)}</div></div><div class="stat"><div class="label">חויב עד כה</div><div class="value">${money(s2.billed)}</div><div class="small muted">${qty(s2.pct)}%</div></div>
       <div class="stat"><div class="label">הועבר לתשלום</div><div class="value">${money(s2.transferred)}</div></div><div class="stat good"><div class="label">שולם</div><div class="value">${money(s2.paid)}</div></div><div class="stat"><div class="label">יתרה לחיוב</div><div class="value">${money(s2.remaining)}</div></div></div>
     ${e.feeType === 'hourly' ? `<div class="small">תעריף ${money(e.hourlyRate)} לשעה${e.estHours ? ` · אומדן ${qty(e.estHours)} שעות` : ''}</div>` : fold('ms_' + e.id, 'אבני דרך לתשלום', `<div class="tableWrap"><table class="rtable"><thead><tr><th>שלב</th><th>% משכ״ט</th><th>סכום</th><th>חויב מהשלב</th><th>חויב ₪</th><th>יתרה בשלב</th></tr></thead><tbody>${msRows || '<tr><td colspan="6" class="empty">לא הוגדרו אבני דרך</td></tr>'}</tbody></table></div>`, {inner: true, right: `${(e.milestones || []).length} שלבים`})}
@@ -2330,6 +2374,220 @@ async function saveBill(id, engId) {
   await saveDb(); closeModal(); render(); toast(`החשבון נשמר · ${STAGE_NAMES[billStatus({...st})]}`);
 }
 async function deleteBill(id) { if (!confirmDelete('למחוק את החשבון?')) return; removeRecs('bills', b => b.id === id); await saveDb(); closeModal(); render(); }
+
+/* ===================================================================== דוחות סטטוס (Excel / PDF) */
+const RPT_SECTIONS = [
+  ['kpi', 'סיכום מנהלים (נתוני מפתח)'], ['byProject', 'סיכום לפי פרויקט'], ['byEng', 'סיכום לפי מתכנן'], ['milestones', 'אבני דרך - ניצול'],
+  ['bills', 'פירוט חשבונות (4 שלבים)'], ['alerts', 'התראות פתוחות'], ['forecast', 'צפי תשלומים לפי חודש']];
+const RPT_MOD = [['modMonthly', 'משהב״ט - ריכוז חיובים לפי חודש'], ['modOrders', 'משהב״ט - ניצול תקציב הזמנות'], ['modPeople', 'משהב״ט - עובדים והזמנות']];
+const RPT_STATUS = [['all', 'כל החשבונות'], ['unpaid', 'לא שולמו'], ['late', 'באיחור'], ['transfer', 'ממתינים להעברה לתשלום'], ['paid', 'שולמו'], ['notax', 'שולמו - חסרה חשבונית מס']];
+function rptDefaults() {
+  return {projects: S.db.projects.map(p => p.id), engs: S.db.engagements.map(e => e.id), sections: ['kpi', 'byProject', 'byEng', 'bills', 'alerts', 'forecast'], parked: false,
+    status: 'all', from: '', to: '', modFrom: shiftMonth(todayIso().slice(0, 7), -2), modTo: todayIso().slice(0, 7), title: '', landscape: true};
+}
+// פתיחת מחולל הדוחות עם בחירה מוכנה (מכל חוצץ / פרויקט / מתכנן)
+function openReport(preset) {
+  const r = rptDefaults();
+  if (preset === 'dash') r.sections = ['kpi', 'alerts', 'forecast', 'byProject'];
+  else if (preset === 'bills') { r.sections = ['bills']; r.status = S.pbFilter?.status === 'open' ? 'unpaid' : 'all'; if (S.pbFilter?.project) { r.projects = [S.pbFilter.project]; r.engs = engsOf(S.pbFilter.project).map(e => e.id); } }
+  else if (preset === 'mod') r.sections = ['modMonthly', 'modOrders'];
+  else if (preset?.project) { r.projects = [preset.project]; r.engs = engsOf(preset.project).map(e => e.id); r.sections = ['kpi', 'byEng', 'milestones', 'bills', 'alerts', 'forecast']; }
+  else if (preset?.eng) { const e = engById(preset.eng); r.projects = [e.projectId]; r.engs = [e.id]; r.sections = ['kpi', 'milestones', 'bills', 'alerts']; }
+  S.rpt = r; if (S.module !== 'proj') { S.module = 'proj'; } S.ptab = 'preports'; remember(); render(); window.scrollTo(0, 0);
+}
+function rptToggle(key, val, on) { const a = new Set(S.rpt[key]); on ? a.add(val) : a.delete(val); S.rpt[key] = [...a];
+  if (key === 'projects') { const es = engsOf(val).map(e => e.id); const b = new Set(S.rpt.engs); es.forEach(id => on ? b.add(id) : b.delete(id)); S.rpt.engs = [...b]; }
+  renderProj($('#view')); }
+function rptSet(key, val) { S.rpt[key] = val; renderProj($('#view')); }
+function viewPReports(v) {
+  const r = S.rpt = S.rpt || rptDefaults(); const modOk = !modLocked();
+  const chk = (key, val, label, extra = '') => `<label class="chk"><input type="checkbox" ${S.rpt[key].includes(val) ? 'checked' : ''} onchange="rptToggle('${key}','${val}',this.checked)">${label}${extra}</label>`;
+  const projTree = S.db.projects.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')).map(p => `<div class="rptProj">${chk('projects', p.id, `<b>${esc(p.name)}</b>`)}
+    <div class="rptEngs">${engsOf(p.id).map(e => chk('engs', e.id, `${esc(e.discipline || '')} · ${esc(e.company || '')}`)).join('') || '<span class="small muted">אין מתכננים</span>'}</div></div>`).join('') || '<div class="muted">אין פרויקטים</div>';
+  v.innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">${ico('report')} הפקת דוח סטטוס</h2>
+      <div class="row"><button class="small" onclick="S.rpt=rptDefaults();renderProj($('#view'))">איפוס בחירה</button></div></div>
+    <p class="small muted" style="margin:6px 0 0">בוחרים מה להכליל בדוח ולוחצים Excel או PDF. אפשר לפתוח את הדוח גם מכפתור "דוח" בכל פרויקט, מתכנן וחוצץ.</p></div>
+  <div class="grid2">
+    <div class="card"><h3 style="margin-top:0">1. פרויקטים ומתכננים</h3>
+      <div class="row small" style="margin-bottom:6px"><a href="#" onclick="S.rpt.projects=S.db.projects.map(p=>p.id);S.rpt.engs=S.db.engagements.map(e=>e.id);renderProj($('#view'));return false">סמן הכל</a> · <a href="#" onclick="S.rpt.projects=[];S.rpt.engs=[];renderProj($('#view'));return false">נקה הכל</a></div>
+      <div class="rptTree">${projTree}</div></div>
+    <div class="card"><h3 style="margin-top:0">2. מה להכליל</h3>
+      <div class="rptSecs">${RPT_SECTIONS.map(([k, t]) => chk('sections', k, t)).join('')}
+        <label class="chk" style="margin-inline-start:22px"><input type="checkbox" ${r.parked ? 'checked' : ''} onchange="rptSet('parked',this.checked)">כולל התראות שנדחו / טופלו</label></div>
+      ${modOk ? `<h3>הגשת חשבונות משהב״ט</h3><div class="rptSecs">${RPT_MOD.map(([k, t]) => chk('sections', k, t)).join('')}</div>
+        <div class="form" style="margin-top:6px"><label>מחודש<input type="month" value="${esc(r.modFrom)}" onchange="rptSet('modFrom',this.value)"></label><label>עד חודש<input type="month" value="${esc(r.modTo)}" onchange="rptSet('modTo',this.value)"></label></div>`
+        : `<div class="small muted" style="margin-top:8px">${ico('lock')} נתוני משהב״ט נעולים - פתח את הנעילה כדי לכלול אותם בדוח.</div>`}
+      <h3>3. סינון חשבונות</h3>
+      <div class="form"><label>מצב<select onchange="rptSet('status',this.value)">${RPT_STATUS.map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>חשבונית עסקה מתאריך<input type="date" value="${esc(r.from)}" onchange="rptSet('from',this.value)"></label><label>עד תאריך<input type="date" value="${esc(r.to)}" onchange="rptSet('to',this.value)"></label></div>
+      <h3>4. הפקה</h3>
+      <div class="form"><label class="wide">כותרת הדוח (לא חובה)<input id="rptTitle" value="${esc(r.title)}" placeholder="דוח סטטוס חשבונות" oninput="S.rpt.title=this.value"></label>
+        <label>כיוון דף (PDF)<select onchange="rptSet('landscape',this.value==='1')"><option value="1" ${r.landscape ? 'selected' : ''}>לרוחב</option><option value="0" ${r.landscape ? '' : 'selected'}>לאורך</option></select></label></div>
+      <div class="row" style="margin-top:10px"><button class="primary" onclick="rptExcel()">${ico('file')} הפק Excel</button><button class="primary" onclick="rptPdf()">${ico('file')} הפק PDF</button><button onclick="rptPreview()">תצוגה מקדימה</button><button class="ghost" onclick="rptPrint()">הדפסה</button></div>
+    </div></div>
+  <div id="rptPrev"></div>`;
+}
+/* ---- נתוני הדוח: רשימת סעיפים {title, kpis?, cols:[{h,t}], rows:[[...]], foot?} ; t = money|pct|date|num|text */
+function rptBills(r) {
+  const today = todayIso(), engSet = new Set(r.engs);
+  return S.db.bills.map(b => { const e = engById(b.engagementId); if (!e || !engSet.has(e.id) || !r.projects.includes(e.projectId)) return null;
+    return {b, e, p: projById(e.projectId), st: billStatus(b), ps: payState(b, e), due: dueDate(b, e), net: billNet(b), gross: billGross(b)}; }).filter(Boolean)
+    .filter(x => (!r.from || (x.b.deal?.date || '') >= r.from) && (!r.to || (x.b.deal?.date || '9') <= r.to))
+    .filter(x => ({all: true, unpaid: x.ps !== 'paid', late: x.ps === 'late', transfer: x.st === 1, paid: x.ps === 'paid', notax: x.st === 3})[r.status])
+    .sort((a, b) => (a.p?.name || '').localeCompare(b.p?.name || '', 'he') || (a.e.discipline || '').localeCompare(b.e.discipline || '', 'he') || (a.b.seq || 0) - (b.b.seq || 0));
+}
+function rptBuild(r) {
+  const today = todayIso(), secs = [], has = k => r.sections.includes(k);
+  const engs = S.db.engagements.filter(e => r.engs.includes(e.id) && r.projects.includes(e.projectId));
+  const bills = rptBills(r); const sum = (l, f) => r2(l.reduce((a, x) => a + (f(x) || 0), 0));
+  const filtNote = [r.status !== 'all' ? RPT_STATUS.find(x => x[0] === r.status)[1] : '', r.from || r.to ? `חשבונית עסקה ${r.from ? 'מ-' + dateHe(r.from) : ''} ${r.to ? 'עד ' + dateHe(r.to) : ''}` : ''].filter(Boolean).join(' · ');
+  const paidOf = x => x.b.payment?.date ? (x.b.payment.amount != null && x.b.payment.amount !== '' ? Number(x.b.payment.amount) : x.gross) : 0;
+  const stName = x => x.ps === 'late' ? `באיחור ${daysBetween(x.due, today)} ימים` : x.ps === 'soon' ? 'לתשלום בקרוב' : STAGE_NAMES[x.st];
+  if (has('kpi') && (engs.length || bills.length)) {
+    const fee = sum(engs, e => engFee(e)), unpaid = bills.filter(x => x.ps !== 'paid' && x.st >= 1);
+    secs.push({key: 'kpi', title: 'סיכום מנהלים', note: filtNote, kpis: [
+      ['פרויקטים', new Set(engs.map(e => e.projectId)).size, 'num'], ['מתכננים', engs.length, 'num'], ['שכר טרחה (ללא מע״מ)', fee, 'money'],
+      ['חויב עד כה (ללא מע״מ)', sum(bills, x => x.net), 'money'], ['% חיוב משכ״ט', fee ? sum(bills, x => x.net) / fee : 0, 'pct'], ['יתרה לחיוב', r2(fee - sum(bills, x => x.net)), 'money'],
+      ['שולם (כולל מע״מ)', sum(bills, paidOf), 'money'], ['פתוח לתשלום (כולל מע״מ)', sum(unpaid, x => x.gross), 'money'],
+      ['באיחור', sum(unpaid.filter(x => x.ps === 'late'), x => x.gross), 'money', 'bad'], ['לתשלום בשבוע הקרוב', sum(unpaid.filter(x => x.ps === 'soon'), x => x.gross), 'money', 'soon'],
+      ['ממתינים להעברה לתשלום', sum(bills.filter(x => x.st === 1), x => x.gross), 'money'], ['חסרה חשבונית מס', bills.filter(x => x.st === 3).length, 'num']]});
+  }
+  if (has('byProject')) {
+    const ps = [...new Set(engs.map(e => e.projectId))].map(projById).filter(Boolean).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he'));
+    const rows = ps.map(p => { const es = engs.filter(e => e.projectId === p.id), bs = bills.filter(x => x.p?.id === p.id); const fee = sum(es, engFee), billed = sum(bs, x => x.net);
+      return [p.name, es.length, fee, billed, fee ? billed / fee : 0, sum(bs.filter(x => x.st >= 2), x => x.gross), sum(bs, paidOf), r2(fee - billed), bs.filter(x => x.ps !== 'paid').length, bs.filter(x => x.ps === 'late').length]; });
+    secs.push({key: 'byProject', title: 'סיכום לפי פרויקט', note: filtNote, cols: [['פרויקט', 'text'], ['מתכננים', 'num'], ['שכ״ט', 'money'], ['חויב', 'money'], ['% חיוב', 'pct'], ['הועבר לתשלום (כולל מע״מ)', 'money'], ['שולם (כולל מע״מ)', 'money'], ['יתרה לחיוב', 'money'], ['חשבונות פתוחים', 'num'], ['באיחור', 'num']],
+      rows, foot: ['סה״כ', ...[1, 2, 3].map(i => r2(rows.reduce((a, x) => a + x[i], 0))), null, ...[5, 6, 7, 8, 9].map(i => r2(rows.reduce((a, x) => a + x[i], 0)))]});
+  }
+  if (has('byEng')) {
+    const rows = engs.slice().sort((a, b) => (projById(a.projectId)?.name || '').localeCompare(projById(b.projectId)?.name || '', 'he') || (a.discipline || '').localeCompare(b.discipline || '', 'he')).map(e => {
+      const bs = bills.filter(x => x.e.id === e.id), fee = engFee(e), billed = sum(bs, x => x.net);
+      return [projById(e.projectId)?.name, e.discipline, e.company, e.feeType === 'hourly' ? 'שעות' : `${(e.milestones || []).length} אבני דרך`, termsText(e.terms), fee, billed, fee ? billed / fee : 0, sum(bs, paidOf), r2(fee - billed), bs.length, bs.filter(x => x.ps !== 'paid').length]; });
+    secs.push({key: 'byEng', title: 'סיכום לפי מתכנן', note: filtNote, cols: [['פרויקט', 'text'], ['דיסציפלינה', 'text'], ['מתכנן', 'text'], ['מבנה שכ״ט', 'text'], ['תנאי תשלום', 'text'], ['שכ״ט', 'money'], ['חויב', 'money'], ['% חיוב', 'pct'], ['שולם (כולל מע״מ)', 'money'], ['יתרה לחיוב', 'money'], ['חשבונות', 'num'], ['פתוחים', 'num']],
+      rows, foot: ['סה״כ', null, null, null, null, ...[5, 6].map(i => r2(rows.reduce((a, x) => a + x[i], 0))), null, ...[8, 9, 10, 11].map(i => r2(rows.reduce((a, x) => a + x[i], 0)))]});
+  }
+  if (has('milestones')) {
+    const rows = []; for (const e of engs) { const fee = Number(e.fee) || 0;
+      for (const m of e.milestones || []) { const amt = r2(fee * (m.percent || 0) / 100), c = msClaimed(e, m.id); rows.push([projById(e.projectId)?.name, `${e.discipline || ''} · ${e.company || ''}`, m.name, (m.percent || 0) / 100, amt, c / 100, r2(amt * c / 100), r2(amt - amt * c / 100)]); } }
+    secs.push({key: 'milestones', title: 'אבני דרך - ניצול', cols: [['פרויקט', 'text'], ['מתכנן', 'text'], ['שלב', 'text'], ['% משכ״ט', 'pct'], ['סכום השלב', 'money'], ['חויב מהשלב', 'pct'], ['סכום שחויב', 'money'], ['יתרה בשלב', 'money']], rows,
+      foot: ['סה״כ', null, null, null, ...[4].map(i => r2(rows.reduce((a, x) => a + x[i], 0))), null, ...[6, 7].map(i => r2(rows.reduce((a, x) => a + x[i], 0)))]});
+  }
+  if (has('bills')) {
+    const rows = bills.map(x => [x.p?.name, x.e.discipline, x.e.company, x.b.seq, billLinesText(x.b, x.e), x.net, x.gross, x.b.deal?.no || '', x.b.deal?.date || null, x.b.transfer?.date || null, x.due, x.b.payment?.date || null, x.b.payment?.date ? paidOf(x) : null, x.b.tax?.no || '', stName(x), x.b.notes || '']);
+    secs.push({key: 'bills', title: 'פירוט חשבונות', note: filtNote, cols: [['פרויקט', 'text'], ['דיסציפלינה', 'text'], ['מתכנן', 'text'], ['#', 'num'], ['מה חויב', 'wtext'], ['סכום ללא מע״מ', 'money'], ['כולל מע״מ', 'money'], ['חשבונית עסקה', 'text'], ['תאריך קבלה', 'date'], ['הועבר לתשלום', 'date'], ['מועד תשלום', 'date'], ['שולם בתאריך', 'date'], ['סכום ששולם', 'money'], ['חשבונית מס', 'text'], ['מצב', 'text'], ['הערות', 'wtext']],
+      rows, rowCls: bills.map(x => x.ps === 'late' ? 'bad' : x.ps === 'soon' ? 'soon' : x.ps === 'paid' ? 'good' : ''), foot: ['סה״כ', null, null, rows.length, null, r2(rows.reduce((a, x) => a + x[5], 0)), r2(rows.reduce((a, x) => a + x[6], 0)), null, null, null, null, null, r2(rows.reduce((a, x) => a + (x[12] || 0), 0)), null, null, null]});
+  }
+  if (has('alerts')) {
+    const al = projAlerts({all: r.parked}).filter(a => r.projects.includes(a.projectId) && r.engs.includes(a.engId));
+    secs.push({key: 'alerts', title: r.parked ? 'התראות (כולל נדחו / טופלו)' : 'התראות פתוחות', cols: [['רמה', 'text'], ['פרויקט · מתכנן', 'text'], ['חשבון', 'text'], ['התראה', 'wtext'], ['הערה', 'wtext'], ['טיפול', 'text']],
+      rows: al.map(a => [{bad: 'דחוף', warn: 'לטיפול', info: 'מידע'}[a.level], a.who, a.bill ?? '', a.text, a.note || '', a.snoozed ? `נדחה עד ${dateHe(a.snoozed)}` : a.done ? 'טופל' : '']), rowCls: al.map(a => a.level === 'bad' ? 'bad' : '')});
+  }
+  if (has('forecast')) {
+    const un = bills.filter(x => x.ps !== 'paid' && x.st >= 1); const g = {};
+    for (const x of un) { const k = !x.due ? 'ללא מועד' : x.due < today ? 'באיחור' : x.due.slice(0, 7); (g[k] = g[k] || []).push(x); }
+    const keys = Object.keys(g).sort((a, b) => (a === 'באיחור' ? '0' : a === 'ללא מועד' ? '9' : a).localeCompare(b === 'באיחור' ? '0' : b === 'ללא מועד' ? '9' : b));
+    const rows = keys.map(k => [k.length === 7 && k[4] === '-' ? monthLabel(k) : k, g[k].length, sum(g[k], x => x.net), sum(g[k], x => x.gross)]);
+    secs.push({key: 'forecast', title: 'צפי תשלומים לפי חודש (לפי מועד התשלום)', note: filtNote, cols: [['חודש', 'text'], ['חשבונות', 'num'], ['ללא מע״מ', 'money'], ['כולל מע״מ', 'money']], rows,
+      rowCls: keys.map(k => k === 'באיחור' ? 'bad' : ''), foot: ['סה״כ', ...[1, 2, 3].map(i => r2(rows.reduce((a, x) => a + x[i], 0)))]});
+  }
+  if (!modLocked()) {
+    const inRange = m => (!r.modFrom || m >= r.modFrom) && (!r.modTo || m <= r.modTo);
+    if (has('modMonthly')) { const rows = [], cls = [];
+      S.db.reports.filter(x => inRange(x.month)).sort((a, b) => a.month.localeCompare(b.month) || (personById(a.personId)?.name || '').localeCompare(personById(b.personId)?.name || '', 'he')).forEach(rp => {
+        const p = personById(rp.personId), o = orderById(rp.orderId);
+        for (const x of repLinesOf(rp, o)) { const l = linesOf(o).find(y => y.type === x.type && String(y.itemNo ?? '') === String(x.itemNo ?? '')) || lineOf(o, x.type, rp.month); const rate = l.rate || 0;
+          rows.push([monthLabel(rp.month), p?.name, o?.number, `${x.type === 'hours' ? 'שעות' : 'ק״מ'}${x.itemNo ? ' · פריט ' + x.itemNo : ''}`, Number(x.qty) || 0, rate, r2((Number(x.qty) || 0) * rate), rp.invoiceNo ?? '', rp.dealInvoiceNo || '', rp.status || 'טיוטה']);
+          cls.push(rp.status === 'הופק' ? '' : 'soon'); } });
+      secs.push({key: 'modMonthly', title: `משהב״ט - ריכוז חיובים ${monthLabel(r.modFrom)}–${monthLabel(r.modTo)}`, cols: [['חודש', 'text'], ['עובד', 'text'], ['הזמנה', 'text'], ['סוג', 'text'], ['כמות', 'num'], ['תעריף', 'money'], ['סכום ללא מע״מ', 'money'], ['חשבון מס׳', 'text'], ['חשבונית עסקה', 'text'], ['סטטוס', 'text']],
+        rows, rowCls: cls, foot: ['סה״כ', null, null, null, null, null, r2(rows.reduce((a, x) => a + x[6], 0)), null, null, null]}); }
+    if (has('modOrders')) { const rows = [];
+      for (const o of S.db.orders) { const p = personById(o.personId);
+        for (const l of linesOf(o)) { const used = r2(S.db.reports.filter(x => x.orderId === o.id).reduce((a, rp) => a + repLinesOf(rp, o).filter(x => x.type === l.type && (!l.itemNo || !x.itemNo || String(x.itemNo) === String(l.itemNo))).reduce((b, x) => b + (Number(x.qty) || 0), 0), 0) * (l.rate || 0));
+          const budget = Number(l.budget) || 0; rows.push([p?.name, o.number, o.validTo ? `${dateHe(o.validFrom)}–${dateHe(o.validTo)}` : '', `${l.type === 'hours' ? 'שעות' : 'ק״מ'}${l.itemNo ? ' · פריט ' + l.itemNo : ''}`, l.rate || 0, budget, used, r2(budget - used), budget ? used / budget : 0]); } }
+      rows.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', 'he'));
+      secs.push({key: 'modOrders', title: 'משהב״ט - ניצול תקציב הזמנות (לפי השיוכים במערכת)', cols: [['עובד', 'text'], ['הזמנה', 'text'], ['תוקף', 'text'], ['פריט', 'text'], ['תעריף', 'money'], ['תקציב', 'money'], ['נוצל', 'money'], ['יתרה', 'money'], ['% ניצול', 'pct']], rows,
+        rowCls: rows.map(x => x[8] > 0.9 ? 'bad' : x[8] > 0.75 ? 'soon' : ''), foot: ['סה״כ', null, null, null, null, ...[5, 6, 7].map(i => r2(rows.reduce((a, x) => a + x[i], 0))), null]}); }
+    if (has('modPeople')) {
+      const rows = people().map(p => { const os = ordersOf(p.id); return [p.name, p.personalId || '', p.title || '', p.rate || null, os.map(o => o.number).join(', '), p.active === false ? 'לא פעיל' : 'פעיל']; });
+      secs.push({key: 'modPeople', title: 'משהב״ט - עובדים והזמנות', cols: [['שם', 'text'], ['ת.ז.', 'text'], ['תואר', 'text'], ['תעריף', 'money'], ['הזמנות', 'text'], ['מצב', 'text']], rows}); }
+  }
+  return secs;
+}
+function rptGo() { const r = S.rpt; if (!r.sections.length) { toast('לא נבחר אף סעיף לדוח', true); return null; }
+  const secs = rptBuild(r); if (!secs.length) { toast('אין נתונים לדוח לפי הבחירה', true); return null; } return secs; }
+const rptTitle = () => (S.rpt.title || '').trim() || 'דוח סטטוס חשבונות';
+const rptFileName = ext => `${rptTitle().replace(/[\\/:*?"<>|]/g, '')} ${todayIso().split('-').reverse().join('.')}.${ext}`;
+/* ---- Excel */
+function rptExcel() {
+  const secs = rptGo(); if (!secs) return;
+  const wb = XLSX.utils.book_new(); wb.Workbook = {Views: [{RTL: true}]}; const used = new Set();
+  const cellOf = (v, t) => { if (v === null || v === undefined || v === '') return null;
+    if (t === 'money') return {t: 'n', v: Number(v), z: '#,##0.00'}; if (t === 'pct') return {t: 'n', v: Number(v), z: '0.0%'}; if (t === 'num') return typeof v === 'number' ? {t: 'n', v, z: '#,##0.##'} : {t: 's', v: String(v)};
+    if (t === 'date') return {t: 'd', v: new Date(v + 'T00:00:00Z'), z: 'dd/mm/yyyy'}; return {t: 's', v: String(v)}; };
+  for (const s of secs) {
+    const aoa = [[{t: 's', v: rptTitle() + ' · ' + s.title}], [{t: 's', v: `הופק ${dateHe(todayIso())}${s.note ? ' · ' + s.note : ''}`}], []];
+    let widths;
+    if (s.kpis) { aoa.push([{t: 's', v: 'נתון'}, {t: 's', v: 'ערך'}]); s.kpis.forEach(k => aoa.push([{t: 's', v: k[0]}, cellOf(k[1], k[2])])); widths = [34, 18]; }
+    else { aoa.push(s.cols.map(c => ({t: 's', v: c[0]}))); s.rows.forEach(row => aoa.push(row.map((v, i) => cellOf(v, s.cols[i][1]))));
+      if (s.foot) aoa.push(s.foot.map((v, i) => i === 0 ? {t: 's', v} : cellOf(v, s.cols[i][1] === 'pct' ? 'num' : s.cols[i][1])));
+      widths = s.cols.map((c, i) => Math.min(48, Math.max(c[0].length + 2, ...s.rows.map(row => { const v = row[i]; return v === null || v === undefined ? 0 : c[1] === 'money' ? 14 : c[1] === 'date' ? 11 : String(v).length + 1; })))); }
+    const ws = XLSX.utils.aoa_to_sheet(aoa, {cellDates: true}); ws['!cols'] = widths.map(w => ({wch: w}));
+    if (!s.kpis) ws['!autofilter'] = {ref: XLSX.utils.encode_range({s: {r: 3, c: 0}, e: {r: 3 + s.rows.length, c: s.cols.length - 1}})};
+    let name = s.title.replace(/[\\/?*[\]:]/g, '').slice(0, 28); let n = name, i = 2; while (used.has(n)) n = name.slice(0, 25) + ' ' + i++; used.add(n);
+    XLSX.utils.book_append_sheet(wb, ws, n);
+  }
+  const out = XLSX.write(wb, {bookType: 'xlsx', type: 'array'}); download(out, rptFileName('xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  toast(`נוצר קובץ Excel: ${secs.length} גיליונות`);
+}
+/* ---- HTML (לתצוגה, PDF והדפסה) */
+function rptFmt(v, t) { if (v === null || v === undefined || v === '') return ''; if (t === 'money') return money(v); if (t === 'pct') return qty(r2(v * 100)) + '%'; if (t === 'date') return dateHe(v); if (t === 'num') return typeof v === 'number' ? qty(v) : esc(v); return esc(v); }
+function rptHtml(secs) {
+  const sec = s => `<section class="rSec"><h2>${esc(s.title)}</h2>${s.note ? `<div class="rNote">${esc(s.note)}</div>` : ''}
+    ${s.kpis ? `<div class="rKpis">${s.kpis.map(k => `<div class="rKpi ${k[3] || ''}"><div class="l">${esc(k[0])}</div><div class="v">${rptFmt(k[1], k[2])}</div></div>`).join('')}</div>`
+    : s.rows.length ? `<table><thead><tr>${s.cols.map(c => `<th>${esc(c[0])}</th>`).join('')}</tr></thead><tbody>${s.rows.map((row, ri) => `<tr class="${s.rowCls?.[ri] || ''}">${row.map((v, i) => `<td class="${['money', 'pct', 'num', 'date'].includes(s.cols[i][1]) ? 'n' : s.cols[i][1] === 'wtext' ? 'w' : ''}">${rptFmt(v, s.cols[i][1])}</td>`).join('')}</tr>`).join('')}</tbody>
+      ${s.foot ? `<tfoot><tr>${s.foot.map((v, i) => `<td class="${i ? 'n' : ''}">${i === 0 ? esc(v) : rptFmt(v, s.cols[i][1] === 'pct' ? 'num' : s.cols[i][1])}</td>`).join('')}</tr></tfoot>` : ''}</table>` : '<div class="rNote">אין נתונים</div>'}</section>`;
+  return `<div class="rptDoc" dir="rtl"><header class="rHead"><div><div class="rT">${esc(rptTitle())}</div><div class="rS">ב.ד. אטלס הנדסה וניהול פרויקטים</div></div><div class="rD">הופק ${dateHe(todayIso())}</div></header>${secs.map(sec).join('')}</div>`;
+}
+const RPT_CSS = `.rptDoc{font-family:Arial,"Segoe UI",sans-serif;color:#1c2b2a;background:#fff;font-size:10.5px;padding:4px 2px;direction:rtl;letter-spacing:0.01px}
+.rptDoc .rHead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #3d6b5c;padding-bottom:6px;margin-bottom:10px}
+.rptDoc .rT{font-size:19px;font-weight:700}.rptDoc .rS{color:#5f6f6b;font-size:11px}.rptDoc .rD{color:#5f6f6b;font-size:11px}
+.rptDoc .rSec{margin:0 0 14px}.rptDoc h2{font-size:13.5px;margin:0 0 4px;color:#3d6b5c;border-right:4px solid #3d6b5c;padding-right:6px}
+.rptDoc .rNote{color:#5f6f6b;font-size:10px;margin:0 0 4px}
+.rptDoc table{width:100%;border-collapse:collapse}.rptDoc th{background:#1c2b2a;color:#fff;font-weight:600;padding:4px 5px;text-align:right;font-size:10px;vertical-align:bottom}
+.rptDoc td{padding:3px 5px;border-bottom:1px solid #dde4e1;vertical-align:top}.rptDoc td.w{min-width:110px}.rptDoc td.n{text-align:left;white-space:nowrap;direction:ltr}
+.rptDoc tbody tr:nth-child(even) td{background:#f5f8f6}.rptDoc tfoot td{font-weight:700;border-top:2px solid #1c2b2a;background:#eef2f0}
+.rptDoc tr.bad td{color:#b42318;font-weight:700}.rptDoc tr.soon td{color:#1d4ed8}.rptDoc tr.good td{color:#15803d}
+.rptDoc tr{page-break-inside:avoid;break-inside:avoid}
+.rptDoc .rKpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.rptDoc .rKpi{border:1px solid #dde4e1;border-radius:6px;padding:6px 8px}
+.rptDoc .rKpi .l{color:#5f6f6b;font-size:10px}.rptDoc .rKpi .v{font-size:14px;font-weight:700;direction:ltr;text-align:right}.rptDoc .rKpi.bad .v{color:#b42318}.rptDoc .rKpi.soon .v{color:#1d4ed8}`;
+function rptPreview() { const secs = rptGo(); if (!secs) return; $('#rptPrev').innerHTML = `<div class="card"><div class="row spread"><h2 style="margin:0">תצוגה מקדימה</h2><button class="small ghost" onclick="$('#rptPrev').innerHTML=''">סגור</button></div><div style="overflow:auto;margin-top:8px"><style>${RPT_CSS}</style>${rptHtml(secs)}</div></div>`; $('#rptPrev').scrollIntoView({behavior: 'smooth'}); }
+function loadScript(src) { return new Promise((ok, bad) => { if ([...document.scripts].some(s => s.src === src)) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => bad(new Error('טעינת רכיב ה-PDF נכשלה - בדוק חיבור לאינטרנט')); document.head.appendChild(s); }); }
+async function rptPdf() {
+  const secs = rptGo(); if (!secs) return;
+  await run(async () => {
+    if (!window.html2pdf) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js');
+    const land = S.rpt.landscape; const box = document.createElement('div');
+    box.style.cssText = `position:fixed;top:0;left:-10000px;width:${land ? 1350 : 900}px;background:#fff;z-index:-1`;
+    box.innerHTML = `<style>${RPT_CSS}</style>${rptHtml(secs)}`; document.body.appendChild(box);
+    // html2canvas מצייר אות-אות בטקסט עברי: סוגריים צריכים היפוך (שיקוף RTL) כדי להיראות נכון
+    const C = CanvasRenderingContext2D.prototype, orig = C.fillText, MIR = {'(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<'};
+    C.fillText = function (t, ...a) { return orig.call(this, typeof t === 'string' && t.length === 1 && MIR[t] && this.__rtl !== false ? MIR[t] : t, ...a); };
+    try {
+      const worker = html2pdf().set({margin: [8, 7, 10, 7], filename: rptFileName('pdf'), image: {type: 'jpeg', quality: 0.95}, html2canvas: {scale: 2, useCORS: true, backgroundColor: '#ffffff'},
+        jsPDF: {unit: 'mm', format: 'a4', orientation: land ? 'landscape' : 'portrait'}, pagebreak: {mode: ['css', 'legacy'], avoid: ['tr', '.rKpi', 'h2']}}).from(box.querySelector('.rptDoc')).toPdf();
+      const pdf = await worker.get('pdf'); const n = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(120); pdf.text(`${i} / ${n}`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 4, {align: 'center'}); }
+      download(pdf.output('arraybuffer'), rptFileName('pdf'), 'application/pdf');
+      toast(`נוצר PDF: ${n} עמודים`);
+    } finally { C.fillText = orig; box.remove(); }
+  }, 'מכין PDF…');
+}
+function rptPrint() {
+  const secs = rptGo(); if (!secs) return;
+  const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-100px'; document.body.appendChild(f);
+  f.contentDocument.open(); f.contentDocument.write(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8"><title>${esc(rptTitle())}</title><style>${RPT_CSS} @page{size:A4 ${S.rpt.landscape ? 'landscape' : 'portrait'};margin:10mm} body{margin:0} thead{display:table-header-group}</style></head><body>${rptHtml(secs)}</body></html>`); f.contentDocument.close();
+  setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(() => f.remove(), 60000); }, 300);
+}
 
 /* ===================================================================== boot */
 (async function boot() {
