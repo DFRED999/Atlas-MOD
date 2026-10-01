@@ -1017,14 +1017,14 @@ async function prepareInvoice(opts) {
   if (!mf) { steps.push({ok: false, text: `תיקיית החודש ${folderName(S.month)} לא קיימת.`}); return out; }
   steps.push({ok: true, text: 'תיקיית חודש נמצאה'});
   let src, srcName, prev, isFirst;
-  if (n === 1) {
+  if (n === 1 && !opts.previousFile) {
     const tpl = await blobGet('tpl:' + o.id);
     if (!tpl) { steps.push({ok: false, text: 'חשבון ראשון: יש להעלות תבנית טופס 23.030 להזמנה זו.'}); out.needTemplate = true; return out; }
     src = tpl; srcName = o.templateName || 'תבנית'; prev = readInvoice(tpl, srcName); isFirst = true;
     steps.push({ok: true, text: `חשבון ראשון - תבנית: \u2066${srcName}\u2069`});
   } else {
     const pm = shiftMonth(S.month, -1);
-    if (opts.previousFile) { src = opts.previousFile.buf; srcName = opts.previousFile.name; prev = readInvoice(src, srcName); steps.push({ok: true, text: `חשבון קודם (נבחר): \u2066${srcName}\u2069`}); }
+    if (opts.previousFile) { src = opts.previousFile.buf; srcName = opts.previousFile.name; prev = readInvoice(src, srcName); steps.push({ok: true, text: `חשבון קודם (נבחר): \u2066${srcName}\u2069 · חשבון מס׳ ${prev.invoiceNo ?? '?'}`}); if (prev.invoiceNo != null && prev.invoiceNo !== n - 1) steps.push({ok: null, text: `שים לב: הקובץ שנבחר הוא חשבון מס׳ ${prev.invoiceNo}, והחשבון החדש מוגדר כמס׳ ${n} (מצופה ${prev.invoiceNo + 1}).`}); }
     else {
       const pf = await subDir(base, folderName(pm));
       if (!pf) { steps.push({ok: false, text: `תיקיית החודש הקודם ${folderName(pm)} לא קיימת.`}); return out; }
@@ -1663,7 +1663,7 @@ function viewProduce(v) {
     <label>סוג החשבון<select id="pType"><option value="">ללא שינוי (כמו הקודם)</option><option>חשבון חלקי </option><option>ח-ן סופי (סגירת ההתקשרות)</option></select></label>
     <label>מס׳ חשבונית עסקה<input id="pDeal" class="num" value="${esc(rep.dealInvoiceNo || '')}"></label></div>
     <div class="small muted" style="margin-top:6px">${repLinesOf(rep, o).map(x => `${x.type === 'hours' ? 'שעות' : 'ק״מ'}${x.itemNo ? ' (פריט ' + esc(x.itemNo) + ')' : ''}: <b>${qty(x.qty)}</b>`).join(' · ')} · דוח: ${bdi(rep.reportPdf || rep.reportXlsx || '')}</div>
-    <div class="row" style="margin-top:10px"><button class="primary" onclick="doPrepare()">בדוק והכן</button>
+    <div class="row" style="margin-top:10px"><button class="primary" onclick="doPrepare()">בדוק והכן</button><button onclick="pickPrevious()" title="החשבון הקודם (Excel 23.030) - ממנו נלקחים המצטברים">בחר חשבון קודם (Excel)…</button>
       ${o && !o.templateName ? `<button onclick="uploadTemplate('${o.id}')">העלה תבנית לחשבון ראשון</button>` : ''}</div></div>
   <div id="prepOut">${S.prep ? prepHtml(S.prep) : ''}</div>`}`;
 }
@@ -1673,7 +1673,10 @@ async function doPrepare(extra) {
   const r = await run(() => prepareInvoice(opts), 'מחפש חשבון קודם ומחשב מצטברים…'); if (!r) return;
   S.prep = {...r, opts}; $('#prepOut').innerHTML = prepHtml(S.prep);
 }
-function pickPrevious() { pickFile('.xlsx', async f => doPrepare({previousFile: {name: f.name, buf: await f.arrayBuffer()}})); }
+function pickPrevious() { pickFile('.xlsx', async f => { const buf = await f.arrayBuffer(); let inv;
+  try { inv = readInvoice(buf, f.name); } catch (e) { return toast('הקובץ אינו טופס חשבון 23.030 תקין: ' + e.message, true); }
+  if (inv.invoiceNo) $('#pNo').value = inv.invoiceNo + 1;   // החשבון החדש = הקודם + 1
+  doPrepare({previousFile: {name: f.name, buf}}); }); }
 function prepHtml(r) {
   let h = `<div class="card"><h2>בקרה לפני הפקה</h2>${stepsHtml(r.steps)}`;
   if (r.needTemplate) { const rep = reportFor(S.personId, S.month); h += `<button onclick="uploadTemplate('${rep.orderId}')">העלה תבנית 23.030</button>`; }
