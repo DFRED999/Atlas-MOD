@@ -117,7 +117,7 @@
   .bar.over i{background:var(--bad);}
   .stage{font-size:11.5px;white-space:nowrap;}
   .stage.done{color:var(--good);} .stage.todo{color:var(--muted);} .stage.late{color:var(--bad);font-weight:700;}
-  .alertRow td:first-child{width:6px;padding:0;} .alertRow.bad td:first-child{background:var(--bad);} .alertRow.warn td:first-child{background:var(--warn);} .alertRow.info td:first-child{background:#8aa0c8;}
+  .alertRow td:first-child{width:6px;padding:0;} .alertRow td.alActs{width:1%;white-space:nowrap;} .alertRow.bad td:first-child{background:var(--bad);} .alertRow.warn td:first-child{background:var(--warn);} .alertRow.info td:first-child{background:#8aa0c8;}
   .payLate{color:#c01818 !important;font-weight:800 !important;}
   .paySoon{color:#1747d1 !important;font-weight:800 !important;}
   .payDone{color:#0f7a3d !important;font-weight:800 !important;}
@@ -177,7 +177,7 @@
     table.rtable td.empty{display:block;text-align:center;}
     .alertRow td{display:block;} .alertRow td:first-child{display:none;}
     .alertRow{display:block;border-inline-start:5px solid var(--warn);padding:8px 10px;} .alertRow.bad{border-inline-start-color:var(--bad);} .alertRow.info{border-inline-start-color:#8aa0c8;}
-    .alertRow td{padding:2px 0;border:none;} .alertRow td:last-child{display:none;}
+    .alertRow td{padding:2px 0;border:none;} .alertRow td:last-child{display:none;} .alertRow td.alActs .row{justify-content:flex-start !important;flex-wrap:wrap !important;margin-top:4px;}
     .legend{font-size:11.5px;gap:10px;}
   }
 </style>
@@ -1923,7 +1923,7 @@ function engStats(e) {
   return {fee, billed, transferred, paid, remaining: r2(fee - billed), pct: fee ? billed / fee * 100 : 0, bills: bs.length, open: bs.filter(b => billStatus(b) < 4).length};
 }
 /* --------------------------------------------------------------- alerts */
-function projAlerts() {
+function projAlerts(opts = {}) {
   if (!S.db.bills) return [];
   const st = psettings(), today = todayIso(), out = [];
   for (const b of S.db.bills) {
@@ -1945,7 +1945,55 @@ function projAlerts() {
     for (const m of e.milestones || []) { const c = msClaimed(e, m.id); if (c > 100.5) out.push({...base, level: 'bad', kind: 'ms', text: `אבן הדרך "${m.name}" חויבה ב-${qty(c)}% (מעל 100%)`}); }
     const s2 = engStats(e); if (s2.fee && s2.billed > s2.fee + 1) out.push({...base, level: 'bad', kind: 'fee', text: `סה״כ החשבונות (${money(s2.billed)}) עולה על שכר הטרחה (${money(s2.fee)})`});
   }
-  const rank = {bad: 0, warn: 1, info: 2}; return out.sort((a, b) => rank[a.level] - rank[b.level] || (b.days || 0) - (a.days || 0));
+  // טיפול בהתראה: דחייה / טופל / הערה - נשמר על החשבון (או על המתכנן) ומסתנכרן
+  for (const a of out) { const r = alertRec(a), act = r?.acts?.[a.kind]; if (!act) continue;
+    a.note = act.note || null; a.actAt = act.at || null;
+    if (act.until && act.until > today) a.snoozed = act.until;
+    if (act.done && act.sig === alertSig(a, r)) a.done = true; }
+  const rank = {bad: 0, warn: 1, info: 2}; out.sort((a, b) => rank[a.level] - rank[b.level] || (b.days || 0) - (a.days || 0));
+  return opts.all ? out : out.filter(a => !a.snoozed && !a.done);
+}
+/* ---- פעולות על התראות ---- */
+function alertRec(a) { return a.billId ? S.db.bills.find(b => b.id === a.billId) : engById(a.engId); }
+// "טופל" תקף כל עוד מצב החשבון לא השתנה (למשל שולם/הועבר) - אחרת ההתראה חוזרת אם עדיין רלוונטית
+function alertSig(a, r) { return a.billId ? `${a.kind}:${billStatus(r)}` : `${a.kind}:${a.text}`; }
+function findAlert(billId, engId, kind) { return projAlerts({all: true}).find(a => a.kind === kind && (billId ? a.billId === billId : !a.billId && a.engId === engId)); }
+async function setAlertAct(billId, engId, kind, patch) {
+  const a = findAlert(billId, engId, kind); if (!a) return toast('ההתראה כבר לא קיימת', true);
+  const r = alertRec(a), list = a.billId ? 'bills' : 'engagements';
+  const acts = {...(r.acts || {})}; const cur = {...(acts[kind] || {})};
+  if (patch === null) delete acts[kind];
+  else { Object.assign(cur, patch, {at: new Date().toISOString()}); if (patch.done) cur.sig = alertSig(a, r); for (const k of Object.keys(cur)) if (cur[k] === null || cur[k] === undefined) delete cur[k]; acts[kind] = cur; }
+  upsert(list, {...r, acts}); await saveDb(); closeModal(); render();
+}
+function snoozeAlert(billId, engId, kind, days) { const until = addDays(todayIso(), days); setAlertAct(billId, engId, kind, {until, done: null}).then(() => toast(`נדחה עד ${dateHe(until)}`)); }
+function doneAlert(billId, engId, kind) { setAlertAct(billId, engId, kind, {done: true, until: null}).then(() => toast('סומן כטופל')); }
+function restoreAlert(billId, engId, kind) { setAlertAct(billId, engId, kind, {done: null, until: null}); }
+// פתרון ישיר לפי סוג ההתראה - מעדכן את החשבון עצמו
+const ALERT_FIX = {transfer: '✓ הועבר לתשלום היום', overdue: '✓ שולם היום', due: '✓ שולם היום', tax: '✓ התקבלה חשבונית מס', deal: 'הזן מס׳ חשבונית עסקה'};
+async function fixAlert(billId, kind) {
+  const b = S.db.bills.find(x => x.id === billId); if (!b) return; const today = todayIso(); const nb = JSON.parse(JSON.stringify(b));
+  nb.deal = nb.deal || {}; nb.transfer = nb.transfer || {}; nb.payment = nb.payment || {}; nb.tax = nb.tax || {};
+  if (kind === 'transfer') { if (!confirm(`לסמן שחשבון ${b.seq} הועבר לתשלום היום (${dateHe(today)})?`)) return; nb.transfer.date = today; }
+  else if (kind === 'overdue' || kind === 'due') { if (!confirm(`לסמן שחשבון ${b.seq} שולם היום (${dateHe(today)}) בסך ${money(billGross(b))}?`)) return; nb.payment.date = today; nb.payment.amount = billGross(b); if (!nb.transfer.date) nb.transfer.date = today; }
+  else if (kind === 'tax') { const no = prompt('מספר חשבונית המס:'); if (no === null) return; if (!no.trim()) return toast('לא הוזן מספר', true); nb.tax.no = no.trim(); nb.tax.date = today; }
+  else if (kind === 'deal') { const no = prompt('מספר חשבונית העסקה:'); if (no === null) return; if (!no.trim()) return toast('לא הוזן מספר', true); nb.deal.no = no.trim(); }
+  else return;
+  upsert('bills', nb); await saveDb(); render(); toast(`חשבון ${b.seq}: ${STAGE_NAMES[billStatus(nb)]}`);
+}
+function alertMenu(billId, engId, kind) {
+  const a = findAlert(billId, engId, kind); if (!a) return;
+  const B = (x) => billId ? `'${billId}'` : 'null', args = `${B()},'${engId}','${kind}'`;
+  const opt = (d, t) => `<button onclick="snoozeAlert(${args},${d})">${t}</button>`;
+  modal('טיפול בהתראה', `<div class="small muted">${esc(a.who)}${a.bill ? ' · חשבון ' + esc(a.bill) : ''}</div><div style="margin:6px 0 12px"><b>${esc(a.text)}</b></div>
+    ${a.billId && ALERT_FIX[kind] ? `<h3>פתרון</h3><div class="row"><button class="primary" onclick="closeModal();fixAlert('${billId}','${kind}')">${ALERT_FIX[kind]}</button><button onclick="closeModal();openBillFromAlert('${billId}','${engId}','${a.projectId}')">פתח את החשבון לעדכון…</button></div>` : ''}
+    <h3>דחייה</h3><div class="row">${opt(1, 'מחר')}${opt(3, '3 ימים')}${opt(7, 'שבוע')}${opt(14, 'שבועיים')}${opt(30, 'חודש')}</div>
+    <div class="row" style="margin-top:8px;align-items:flex-end"><label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">עד תאריך<input type="date" id="alUntil" min="${addDays(todayIso(), 1)}" value="${esc(a.snoozed || '')}"></label><button onclick="const v=$('#alUntil').value; if(!v) return toast('בחר תאריך', true); setAlertAct(${args},{until:v,done:null}).then(()=>toast('נדחה עד '+dateHe(v)))">דחה עד התאריך</button></div>
+    <h3>הערה</h3><textarea id="alNote" rows="2" style="width:100%" placeholder="למשל: דיברתי עם החשב, ישולם עד 15 לחודש">${esc(a.note || '')}</textarea>
+    <div class="row" style="margin-top:6px"><button onclick="setAlertAct(${args},{note:$('#alNote').value.trim()||null}).then(()=>toast('ההערה נשמרה'))">שמור הערה</button></div>
+    <h3>סגירה</h3><div class="row"><button onclick="doneAlert(${args})">✓ טופל - הסתר</button>${a.snoozed || a.done ? `<button onclick="restoreAlert(${args})">החזר לרשימה</button>` : ''}</div>
+    <div class="small muted" style="margin-top:6px">"טופל" מסתיר את ההתראה עד שמצב החשבון משתנה. דחייה מחזירה אותה בתאריך שנבחר.</div>`,
+    `<button class="ghost" onclick="closeModal()">סגור</button>`);
 }
 /* --------------------------------------------------------------- quote PDF import */
 const HEB_MONTHS = {'ינואר': 1, 'פברואר': 2, 'מרץ': 3, 'מרס': 3, 'אפריל': 4, 'מאי': 5, 'יוני': 6, 'יולי': 7, 'אוגוסט': 8, 'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12};
@@ -1987,10 +2035,14 @@ function renderProj(v) {
   ({pdash: viewPDash, projects: viewProjects, pbills: viewPBills, psettings: viewPSettings})[S.ptab](v);
 }
 function openBillFromAlert(billId, engId, projectId) { S.ptab = 'projects'; S.projectId = projectId; S.engId = engId; remember(); render(); if (billId) editBill(billId); }
-function alertsTable(list) {
-  if (!list.length) return `<div class="empty">✓ אין פריטים שדורשים טיפול</div>`;
-  return `<div class="tableWrap"><table><tbody>` + list.map(a => `<tr class="alertRow ${a.level} clickable" onclick="openBillFromAlert(${a.billId ? `'${a.billId}'` : 'null'},'${a.engId}','${a.projectId}')"><td></td>
-    <td>${esc(a.who)}${a.bill ? ` <span class="muted small">· חשבון ${esc(a.bill)}</span>` : ''}</td><td><b>${esc(a.text)}</b></td><td class="small muted">פתח ←</td></tr>`).join('') + `</tbody></table></div>`;
+function alertsTable(list, parked) {
+  if (!list.length) return `<div class="empty">${parked ? 'אין התראות שנדחו או סומנו כטופלו' : '✓ אין פריטים שדורשים טיפול'}</div>`;
+  return `<div class="tableWrap"><table><tbody>` + list.map(a => { const args = `${a.billId ? `'${a.billId}'` : 'null'},'${a.engId}','${a.kind}'`;
+    const quick = parked ? `<button class="small" onclick="event.stopPropagation();restoreAlert(${args})">החזר</button>`
+      : `${a.billId && ALERT_FIX[a.kind] ? `<button class="small" onclick="event.stopPropagation();fixAlert('${a.billId}','${a.kind}')">${ALERT_FIX[a.kind]}</button>` : ''}<button class="small" onclick="event.stopPropagation();snoozeAlert(${args},7)">דחה שבוע</button>`;
+    return `<tr class="alertRow ${a.level} clickable" onclick="openBillFromAlert(${a.billId ? `'${a.billId}'` : 'null'},'${a.engId}','${a.projectId}')"><td></td>
+    <td>${esc(a.who)}${a.bill ? ` <span class="muted small">· חשבון ${esc(a.bill)}</span>` : ''}</td><td><b>${esc(a.text)}</b>${a.note ? `<div class="small" style="color:var(--accent)">✎ ${esc(a.note)}</div>` : ''}${parked ? `<div class="small muted">${a.snoozed ? `נדחה עד ${dateHe(a.snoozed)}` : '✓ סומן כטופל'}</div>` : ''}</td>
+    <td class="alActs"><div class="row" style="gap:4px;flex-wrap:nowrap;justify-content:flex-end">${quick}<button class="small ghost" title="אפשרויות טיפול" onclick="event.stopPropagation();alertMenu(${args})">⋯ עוד</button></div></td><td class="small muted">פתח ←</td></tr>`; }).join('') + `</tbody></table></div>`;
 }
 function viewPDash(v) {
   const today = todayIso(), st = psettings(), al = projAlerts();
@@ -2037,6 +2089,7 @@ function viewPDash(v) {
       ${kpi('paid', `✓ שולם החודש (${monthLabel(today.slice(0, 7))})`, paidMonth)}
       ${kpi('', 'שולם - חסרה חשבונית מס', noTax)}</div>
     ${fold('d_alerts', `דורש טיפול (${al.filter(a => a.level !== 'info').length})`, alertsTable(al), {right: `היום ${dateHe(today)}`})}
+    ${(() => { const pk = projAlerts({all: true}).filter(a => a.snoozed || a.done); return pk.length ? fold('d_parked', `נדחו / טופלו (${pk.length})`, alertsTable(pk, true), {open: false}) : ''; })()}
     ${fold('d_forecast', 'צפי תשלומים', `${payLegend()}
       <h3 class="payLate">באיחור (${late.length} · ${money(sum(late))})</h3>${billTable(late)}
       <h3 class="paySoon">בשבוע הקרוב (${soon.length} · ${money(sum(soon))})</h3>${billTable(soon)}
