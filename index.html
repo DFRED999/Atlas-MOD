@@ -2218,9 +2218,10 @@ function editBill(id, engId) {
   const bill = b || {engagementId: e.id, seq: (billsOf(e.id).reduce((a, x) => Math.max(a, Number(x.seq) || 0), 0) + 1), vat: e.vat ?? 0.18, lines: [], deal: {date: todayIso()}, transfer: {}, payment: {}, tax: {}};
   const fee = Number(e.fee) || 0;
   const portionOf = msId => (bill.lines.find(l => l.kind === 'ms' && l.msId === msId) || {}).portion ?? '';
+  const amountOf = msId => (bill.lines.find(l => l.kind === 'ms' && l.msId === msId) || {}).amount ?? '';
   const msRows = (e.milestones || []).map(m => { const before = msClaimed(e, m.id, bill.id), amt = r2(fee * (m.percent || 0) / 100);
     return `<tr data-bm="${esc(m.id)}" data-amt="${amt}" data-before="${before}" data-pct="${m.percent || 0}"><td>${esc(m.name)}</td><td class="n">${qty(m.percent)}%</td><td class="n">${money(amt)}</td><td class="n">${qty(before)}%</td>
-      <td><input class="num bmP" value="${esc(portionOf(m.id))}" style="width:70px" placeholder="%" oninput="billCalc('p', this)"></td><td><input class="num bmA" style="width:100px" placeholder="₪" oninput="billCalc('a', this)"></td><td class="small bmNote"></td></tr>`; }).join('');
+      <td><input class="num bmP" value="${esc(portionOf(m.id))}" style="width:70px" placeholder="%" oninput="billCalc('p', this)"></td><td><input class="num bmA" style="width:100px" placeholder="₪" value="${esc(amountOf(m.id))}" oninput="billCalc('a', this)"></td><td class="small bmNote"></td></tr>`; }).join('');
   const hrs = bill.lines.find(l => l.kind === 'hours') || {}, extras = bill.lines.filter(l => l.kind === 'extra');
   const stage = (k, n, title, fields) => `<div class="stepBox ${billStatus(bill) >= n ? 'done' : ''}" style="margin-top:8px"><h3><span class="stepNo">${n}</span>${title}</h3><div class="form">${fields}</div></div>`;
   const dateF = (k, f, label, v) => `<label>${label}<div class="row" style="flex-wrap:nowrap"><input type="date" data-st="${k}.${f}" value="${esc(v || '')}"><button type="button" class="small ghost" onclick="this.previousElementSibling.value='${todayIso()}'">היום</button></div></label>`;
@@ -2241,7 +2242,7 @@ function editBill(id, engId) {
     <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);margin-top:10px">הערות<input id="bNotes" value="${esc(bill.notes || '')}"></label>
     <div class="small muted" style="margin-top:6px">מועד תשלום לפי ההצעה (${esc(termsText(e.terms))}): <b id="bDue"></b></div>`,
     `<button class="primary" onclick="saveBill('${id || ''}','${e.id}')">שמור</button><button class="ghost" onclick="tryCloseModal()">ביטול</button>` + (id ? `<button class="danger" style="margin-inline-start:auto" onclick="deleteBill('${id}')">מחק חשבון</button>` : ''));
-  document.querySelectorAll('tr[data-bm]').forEach(tr => { if (tr.querySelector('.bmP').value !== '') billCalc('p', tr.querySelector('.bmP')); });
+  document.querySelectorAll('tr[data-bm]').forEach(tr => { const P = tr.querySelector('.bmP'), A = tr.querySelector('.bmA'); if (P.value !== '') billCalc(A.value !== '' ? 'note' : 'p', P); });
   const dd = document.querySelector('[data-st="deal.date"]'); if (dd) dd.addEventListener('change', () => billCalc());
   window.__billEng = e.id; billCalc();
 }
@@ -2249,7 +2250,8 @@ function bxRowHtml(x) { return `<tr data-bx><td><input data-f="desc" value="${es
 function addBillExtraRow() { document.querySelector('#bxT tbody').insertAdjacentHTML('beforeend', bxRowHtml({})); }
 function billCalc(mode, el) {
   if (el) { const tr = el.closest('tr'), amt = Number(tr.dataset.amt) || 0, before = Number(tr.dataset.before) || 0; const P = tr.querySelector('.bmP'), A = tr.querySelector('.bmA');
-    if (mode === 'p') { const p = Number(P.value) || 0; A.value = P.value === '' ? '' : r2(amt * p / 100); } else { const a = Number(A.value.replace(/,/g, '')) || 0; P.value = A.value === '' ? '' : r2(amt ? a / amt * 100 : 0); }
+    if (mode === 'p') { const p = Number(P.value) || 0; A.value = P.value === '' ? '' : r2(amt * p / 100); }
+    else if (mode === 'a') { const a = Number(A.value.replace(/,/g, '')) || 0; P.value = A.value === '' ? '' : Math.round((amt ? a / amt * 100 : 0) * 1e6) / 1e6; }   // סכום שהוקלד נשמר כמו שהוא; האחוז מדויק
     const p = Number(P.value) || 0, after = r2(before + p);
     tr.querySelector('.bmNote').innerHTML = P.value === '' ? '' : `<span style="color:${after > 100.5 ? 'var(--bad)' : 'var(--muted)'}">אחרי החשבון: ${qty(after)}% מהשלב = ${qty(r2(p * (Number(tr.dataset.pct) || 0) / 100))}% משכ״ט</span>`; }
   const lines = collectBillLines(); const net = r2(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0)); const vat = (Number(document.querySelector('#bf [data-k=vatP]')?.value) || 0) / 100;
