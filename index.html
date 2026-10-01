@@ -650,6 +650,26 @@ async function build23031(buf, sheetName, entries, o) {
     }
   });
   const notes = [];
+  if (o.header) {   // פרטי הזמנה אחרת (הזמנה חדשה שאין לה גיליון) - מחליפים את פרטי ההזמנה בגיליון הבסיס
+    const H = o.header;
+    const op = S.find("הזמנה מס'");
+    if (op) { let done = false;
+      for (const d of [1, 2]) { const cells = []; for (let cc = 1; cc < 10; cc++) { const v = S.input(op[0] + d, cc); if (v !== null && v !== '') cells.push({ref: L(cc) + (op[0] + d), v: String(v).trim()}); }
+        if (!/\d{3}/.test(cells.map(c => c.v).join(''))) continue;
+        const total = cells.reduce((a, c) => a + c.v.length, 0); let rest = String(H.orderNo);
+        if (cells.length > 1 && total === rest.length) cells.forEach(c => { ch[c.ref] = rest.slice(0, c.v.length); rest = rest.slice(c.v.length); });
+        else cells.forEach((c, i) => ch[c.ref] = i === 0 ? String(H.orderNo) : null);
+        done = true; break; }
+      if (!done) throw new Error('לא נמצא בגיליון התא של מספר ההזמנה.'); }
+    const vp = S.find('תוקף ההזמנה');
+    if (vp) for (const rr of [vp[0] + 1, vp[0] + 2]) { const ds = []; for (let cc = 1; cc < 11; cc++) if (toDate(S.val(rr, cc)) && !S.isF(rr, cc)) ds.push(L(cc) + rr);
+      if (ds.length) { if (H.validFrom) ch[ds[0]] = {date: H.validFrom}; if (ds[1] && H.validTo) ch[ds[1]] = {date: H.validTo}; break; } }
+    const setBelow = (label, v) => { if (v === null || v === undefined || isNaN(v)) return; const [, ref] = S.below(label); if (ref) ch[ref] = v; else notes.push(`לא נמצא בטופס השדה "${label}"`); };
+    setBelow('התעריף המבוקש', H.rate);
+    for (const [lb, v] of [['מספר שעות עבודה בחודש', H.monthlyHours], ['מספר ש"ע מוזמנות', H.orderedHours], ['סה"כ ש"ע שבוצעו (ששולמו)', H.paidBefore]])
+      if (v !== null && v !== undefined && !isNaN(v)) { const [, ref] = S.below(lb); if (ref) ch[ref] = {minutes: v * 60}; else notes.push(`לא נמצא בטופס השדה "${lb}"`); }
+    notes.push(`הדוח נבנה לפי הזמנה ${H.orderNo} מגיליון של הזמנה אחרת - בדוק את פרטי ההזמנה בטופס.`);
+  }
   if (o.dealNo !== undefined) { const [, ref] = S.below('מספר חשבונית עסקה'); const p = S.find('מספר חשבונית עסקה'); ch[ref || L(p[1] + 2) + (p[0] + 1)] = o.dealNo || null; }
   const kp = S.find('ק"מ מאושר', true); if (kp && o.kmPerDay !== undefined) ch[L(kp[1]) + (kp[0] + 1)] = o.kmPerDay;
   const kmTot = S.find('סה"כ ק"מ:');
@@ -1417,13 +1437,26 @@ function setAttTemplate(buf, name) {
   ATT.tplBuf = buf; ATT.tplName = name; ATT.sheets = templateSheets23031(buf);
   if (!ATT.sheets.length) { ATT.tplBuf = null; toast('בקובץ התבנית לא נמצא טופס 23.031', true); return attModal(); }
   const [m1, m2] = monthRange(S.month); const myOrders = ordersOf(S.personId).map(o => digits(o.number));
+  ATT.sheets.forEach(x => x.key = x.name);
+  // הזמנה של העובד (בתוקף החודש) שאין לה גיליון בתבנית - למשל הזמנת המשך חדשה: נבנית מגיליון קיים + פרטי ההזמנה מהמערכת
+  const base = ATT.sheets.filter(x => myOrders.includes(digits(x.order))).sort((a, b) => (a.hidden - b.hidden) || String(b.validTo || '').localeCompare(String(a.validTo || '')))[0]
+    || ATT.sheets.find(x => !x.hidden) || ATT.sheets[0];
+  for (const o of ordersOf(S.personId)) {
+    if (ATT.sheets.some(x => digits(x.order) === digits(o.number))) continue;
+    if ((o.validFrom && o.validFrom > m2) || (o.validTo && o.validTo < m1)) continue;
+    const hl = linesOf(o, 'hours'), ln = lineOf(o, 'hours', S.month);
+    const paid = r2(S.db.reports.filter(r => r.orderId === o.id && r.month < S.month).reduce((a, r) => a + repLinesOf(r, o).filter(x => x.type === 'hours').reduce((b, x) => b + (Number(x.qty) || 0), 0), 0));
+    ATT.sheets.push({key: 'v:' + o.id, name: base.name, virtual: true, baseOrder: base.order, order: o.number, validFrom: o.validFrom || null, validTo: o.validTo || null,
+      rate: ln.rate ?? base.rate, monthlyHours: ln.monthlyHours ?? base.monthlyHours, orderedHours: r2(hl.reduce((a, l) => a + (Number(l.qty) || 0), 0)) || null, paidBefore: paid, dealNo: null, kmPerDay: lineOf(o, 'km', S.month).dailyKm ?? base.kmPerDay});
+  }
   const valid = ATT.sheets.filter(x => (!x.validFrom || x.validFrom <= m2) && (!x.validTo || x.validTo >= m1));
   const best = valid.filter(x => myOrders.includes(digits(x.order)));
-  ATT.sheet = (best.length === 1 ? best[0] : valid.length === 1 ? valid[0] : ATT.sheets.find(x => !x.hidden) || ATT.sheets[0]).name;
-  const sh = ATT.sheets.find(x => x.name === ATT.sheet); const o = ordersOf(S.personId).find(x => digits(x.number) === digits(sh.order));
+  ATT.sheet = (best.length === 1 ? best[0] : valid.length === 1 ? valid[0] : ATT.sheets.find(x => !x.hidden) || ATT.sheets[0]).key;
+  const sh = attSheet(); const o = ordersOf(S.personId).find(x => digits(x.number) === digits(sh.order));
   ATT.kmPerDay = sh.kmPerDay ?? lineOf(o, 'km', S.month).dailyKm ?? personById(S.personId).dailyKm ?? '';
   attModal();
 }
+function attSheet() { return ATT.sheets.find(x => x.key === ATT.sheet); }
 function pickAttTemplate() { pickFile('.xlsx', async f => { const buf = await f.arrayBuffer(); setAttTemplate(buf, f.name);
   if (ATT.sheets.length && confirm('לשמור את הקובץ כתבנית דוח השעות של העובד לחודשים הבאים?')) { await blobSet('rtpl:' + S.personId, buf); const p = personById(S.personId); p.reportTemplateName = f.name; upsert('people', p); await saveDb(); } }); }
 function attTotals() {
@@ -1432,7 +1465,7 @@ function attTotals() {
   return {rows, hours: r2(mins / 60), mins, days, km: days * (Number(ATT.kmPerDay) || 0)};
 }
 function attModal() {
-  const a = ATT.att, sh = ATT.sheets.find(x => x.name === ATT.sheet);
+  const a = ATT.att, sh = attSheet();
   const dayName = d => ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'][new Date(d + 'T12:00:00').getDay()];
   const t = (m) => m === null || m === undefined ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
   const [mm1, mm2] = monthRange(S.month);
@@ -1446,7 +1479,12 @@ function attModal() {
     <div class="small muted">קובץ נוכחות: ${bdi(a.file)} · ${a.rows.length} רשומות</div>
     <div class="form" style="margin-top:10px">
       <label class="wide">תבנית טופס 23.031<div class="row"><span class="grow">${ATT.tplName ? bdi(ATT.tplName) : '<span style="color:var(--bad)">לא נבחרה תבנית</span>'}</span><button class="small" onclick="pickAttTemplate()">בחר קובץ תבנית…</button></div></label>
-      ${ATT.sheets.length ? `<label class="wide">גיליון / הזמנה<select onchange="ATT.sheet=this.value; attModal()">${ATT.sheets.map(x => `<option value="${esc(x.name)}" ${x.name === ATT.sheet ? 'selected' : ''}>${esc(x.order || '?')} · ${dateHe(x.validFrom)}–${dateHe(x.validTo)} · ₪${esc(x.rate)} · ${qty(x.monthlyHours)} ש׳ לחודש${x.hidden ? ' (מוסתר)' : ''}</option>`).join('')}</select></label>` : ''}
+      ${ATT.sheets.length ? `<label class="wide">גיליון / הזמנה<select onchange="ATT.sheet=this.value; attModal()">${ATT.sheets.map(x => `<option value="${esc(x.key)}" ${x.key === ATT.sheet ? 'selected' : ''}>${esc(x.order || '?')} · ${dateHe(x.validFrom)}–${dateHe(x.validTo)} · ₪${esc(x.rate)} · ${qty(x.monthlyHours)} ש׳ לחודש${x.hidden ? ' (מוסתר)' : ''}${x.virtual ? ` (חדשה - תיבנה מגיליון ${x.baseOrder || x.name})` : ''}</option>`).join('')}</select></label>` : ''}
+      ${sh?.virtual ? `<div class="wide alert warn" style="margin:0">להזמנה ${esc(sh.order)} אין גיליון בתבנית. הדוח ייבנה מהגיליון של הזמנה ${esc(sh.baseOrder || sh.name)}, ופרטי ההזמנה בטופס יוחלפו בפרטים האלה (מההזמנה במערכת - בדוק ותקן אם צריך):
+        <div class="form" style="margin-top:6px">
+          <label>תוקף מ-<input type="date" id="avFrom" value="${esc(sh.validFrom || '')}"></label><label>תוקף עד<input type="date" id="avTo" value="${esc(sh.validTo || '')}"></label>
+          <label>תעריף לשעה<input class="num" id="avRate" value="${esc(sh.rate ?? '')}"></label><label>שעות בחודש (מאושר)<input class="num" id="avMonthly" value="${esc(sh.monthlyHours ?? '')}"></label>
+          <label>ש״ע מוזמנות בהזמנה<input class="num" id="avOrdered" value="${esc(sh.orderedHours ?? '')}"></label><label>ש״ע ששולמו עד כה (ללא דוח זה)<input class="num" id="avPaid" value="${esc(sh.paidBefore ?? 0)}"></label></div></div>` : ''}
       <label>ק״מ מאושר ליום<input class="num" value="${esc(ATT.kmPerDay ?? '')}" oninput="ATT.kmPerDay=this.value; attFooter()"></label>
       <label>מס׳ חשבונית עסקה<input id="attDeal" class="num" placeholder="${esc(sh?.dealNo ? 'בחודש הקודם: ' + sh.dealNo : '')}"></label>
       <label>תאריך חתימה<input id="attSign" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
@@ -1503,7 +1541,7 @@ function attAddRow() {
   const w = document.querySelector('.modal .tableWrap'); if (w) w.scrollTop = w.scrollHeight;
 }
 function attFooter() {
-  const el = $('#attFoot'); if (!el) return; const T = attTotals(), sh = ATT.sheets.find(x => x.name === ATT.sheet);
+  const el = $('#attFoot'); if (!el) return; const T = attTotals(), sh = attSheet();
   const over = sh?.monthlyHours && T.hours > sh.monthlyHours;
   el.innerHTML = `<div class="stats"><div class="stat ${over ? 'warn' : 'good'}"><div class="label">שעות שנבחרו</div><div class="value">${qty(T.hours)}</div><div class="small muted">${hhmm(T.hours)} ש׳ · ${T.rows.length} רשומות</div></div>
     <div class="stat"><div class="label">מאושר לחודש בהזמנה</div><div class="value">${sh?.monthlyHours ? qty(sh.monthlyHours) : '—'}</div></div>
@@ -1519,7 +1557,9 @@ async function attBuild() {
   const p = personById(S.personId); const first = (p.name || '').trim().split(/\s+/)[0] || 'עובד';
   const name = `דיווח שעות עבודה ${first}- ${S.month.slice(5, 7)}.${S.month.slice(0, 4)}.xlsx`;
   await run(async () => {
-    const res = await build23031(ATT.tplBuf, ATT.sheet, entries, {dealNo: $('#attDeal').value.trim(), kmPerDay: ATT.kmPerDay === '' ? null : Number(ATT.kmPerDay), kmTotal: T.km, signDate: $('#attSign').value || null});
+    const sh = attSheet(); const num = id => { const v = ($('#' + id)?.value || '').replace(/,/g, '').trim(); return v === '' ? null : Number(v); };
+    const header = sh.virtual ? {orderNo: sh.order, validFrom: $('#avFrom').value || null, validTo: $('#avTo').value || null, rate: num('avRate'), monthlyHours: num('avMonthly'), orderedHours: num('avOrdered'), paidBefore: num('avPaid')} : null;
+    const res = await build23031(ATT.tplBuf, sh.name, entries, {header, dealNo: $('#attDeal').value.trim(), kmPerDay: ATT.kmPerDay === '' ? null : Number(ATT.kmPerDay), kmTotal: T.km, signDate: $('#attSign').value || null});
     const mf = await subDir(await personDir(p), folderName(S.month));
     if (await fileExists(mf, name) && !confirm(`${name} כבר קיים בתיקיית החודש. להחליף אותו?`)) return;
     await writeFile(mf, name, res.bytes);
@@ -1709,7 +1749,7 @@ function prepHtml(r) {
       <ol class="howto small"><li>פתח את הקובץ <b>${bdi(N.xlsx)}</b> מתיקיית החודש ב-Excel.</li>
         <li>קובץ ← שמירה בשם ← סוג קובץ: <b>PDF</b> ← אותה תיקייה, שם מומלץ: <b>${bdi(N.pdf)}</b> (האתר מזהה את החשבון לפי התוכן, כך ששם אחר גם יעבוד)</li>
         <li>אם Excel שואל אם לשמור שינויים בקובץ - <b>כן</b> (כך הערכים המחושבים נשמרים לחודש הבא).</li></ol>
-      ${r.reportPdf ? '' : `<div class="alert warn">לדוח השעות אין PDF. שמור גם אותו כ-PDF באותה תיקייה (${bdi((r.reportXlsx || '').replace(/\.xlsx$/i, '.pdf'))}).</div>`}
+      ${r.reportPdf ? '' : `<div class="alert warn">בזמן הבדיקה לא היה PDF של דוח השעות - שמור גם אותו כ-PDF באותה תיקייה (${bdi((r.reportXlsx || '').replace(/\.xlsx$/i, '.pdf'))}). אם כבר שמרת - אפשר להמשיך לאיחוד, הקובץ יימצא.</div>`}
       ${r.exists.pdf ? '<span class="pill ok">✓ נמצא PDF של החשבון</span>' : ''}</div>
 
     <div class="stepBox ${r.exists.merged ? 'done' : ''}"><h3><span class="stepNo">3</span>איחוד: עמוד החשבון + דוח השעות</h3>
@@ -1766,8 +1806,18 @@ async function stepMerge(manualFile) {
     }
     if (!invBuf) throw new Error(err);
     // --- PDF דוח השעות
-    const repPdfName = rep.reportPdf || (rep.reportXlsx || '').replace(/\.xlsx$/i, '.pdf');
-    if (!repPdfName || !await fileExists(mf, repPdfName)) throw new Error(`לא נמצא PDF של דוח השעות (${repPdfName}). שמור את הדוח כ-PDF באותה תיקייה.`);
+    let repPdfName = rep.reportPdf || (rep.reportXlsx || '').replace(/\.xlsx$/i, '.pdf');
+    if (!repPdfName || !await fileExists(mf, repPdfName)) {   // חיפוש לפי תוכן: PDF שהעמוד הראשון שלו טופס 23.031
+      const cands = [];
+      for (const e of await listEntries(mf)) {
+        if (e.kind !== 'file' || !/\.pdf$/i.test(e.name) || /חשבון_ודיווח|מאוחד/.test(e.name) || e.name === invName) continue;
+        try { if (pdfKind((await pdfFirstPageText(await readFile(mf, e.name))).text) === 'report') cands.push(e.name); } catch (x) {}
+      }
+      const pref = cands.filter(n => /דיווח|שעות/.test(n));
+      const pick = cands.length === 1 ? cands[0] : pref.length === 1 ? pref[0] : null;
+      if (!pick) throw new Error(cands.length ? `נמצאו כמה קבצי PDF של דוח שעות (${cands.join(', ')}) - השאר בתיקייה רק את הנכון.` : `לא נמצא PDF של דוח השעות בתיקיית ${folderName(S.month)} (חיפשתי ${repPdfName || 'קובץ PDF של טופס 23.031'}). שמור את הדוח כ-PDF באותה תיקייה.`);
+      repPdfName = pick; checks.push({ok: true, text: `דוח השעות נמצא לפי התוכן: ${pick}`});
+    }
     const repBuf = await readFile(mf, repPdfName);
     const rk = pdfKind((await pdfFirstPageText(repBuf)).text);
     if (rk === 'invoice') throw new Error(`הקובץ ${repPdfName} מכיל חשבון ולא דוח שעות.`);
