@@ -1515,6 +1515,7 @@ async function attBuild() {
   const T = attTotals(); if (!T.rows.length) return toast('לא נבחרו רשומות', true);
   const entries = ATT.att.rows.map((x, i) => ({...x, desc: ATT.desc[i]})).filter((x, i) => ATT.sel.has(i)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   if (entries.some(e => !e.desc)) { if (!confirm('יש רשומות ללא תיאור - הטופס יסמן "לא תקין" בבדיקת התיאורים. להמשיך?')) return; }
+  if (!($('#attDeal')?.value || '').trim()) { if (!confirm('לא הוזן מס׳ חשבונית עסקה.\nבלי המספר הטופס מציג "לא תקין" בבדיקת השדות ובסה״כ השעות.\nלהמשיך בכל זאת?')) { $('#attDeal')?.focus(); return; } }
   const p = personById(S.personId); const first = (p.name || '').trim().split(/\s+/)[0] || 'עובד';
   const name = `דיווח שעות עבודה ${first}- ${S.month.slice(5, 7)}.${S.month.slice(0, 4)}.xlsx`;
   await run(async () => {
