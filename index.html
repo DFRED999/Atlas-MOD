@@ -428,19 +428,24 @@ function readInvoice(buf, fileName) {
     rate: col('מחיר ש"ע בתוקף'), qty: hdr[1], pay: col('שכר לתשלום'), prev: col('סה"כ תשלומים'), cum: col('סה"כ תשלום מצטבר'), remain: col('סה"כ יתרת תקציב')};
   let first = null; for (let r = hr + 1; r < hr + 10; r++) if (norm(S.val(r, cols.name)) === 'א') { first = r + 1; break; }
   const tot = S.find('סה"כ הזמנה', false, hr); const last = tot ? tot[0] - 1 : first + 9;
-  const lines = [], slots = [];
+  const lines = [], slots = [], lineWarn = [];
   for (let r = first; r <= last; r++) {
     const c = {}; for (const [k, v] of Object.entries(cols)) if (v) c[k] = colL(v) + r;
     const nm = S.input(r, cols.name); if (nm === null || nm === '') { slots.push({row: r, no: S.val(r, 2), cells: c}); continue; }
-    const rate = toNumber(S.input(r, cols.rate)), q = toNumber(S.input(r, cols.qty)) || 0, prev = toNumber(S.input(r, cols.prev)) || 0, budget = toNumber(S.input(r, cols.budget));
-    const cur = rate !== null ? r2(q * rate) : null, cum = r2(prev + (cur || 0));
+    // קלט או ערך שמור של נוסחה (בחשבונות ישנים השעות/התשלומים לפעמים מחושבים בנוסחה)
+    const iv = k => { if (!cols[k]) return null; const a = toNumber(S.input(r, cols[k])); return a !== null ? a : toNumber(S.val(r, cols[k])); };
+    const rate = iv('rate'), q = iv('qty') || 0, prev = iv('prev') || 0, budget = iv('budget'), payCached = iv('pay'), cumCached = iv('cum');
+    let cur = rate !== null ? r2(q * rate) : null;
+    if ((!cur) && payCached) cur = r2(payCached);                     // אין כמות קריאה - לוקחים את "שכר לתשלום" שבטופס
+    let cum = r2(prev + (cur || 0));
+    if (cumCached !== null && cumCached > 0 && Math.abs(cumCached - cum) > 0.5) { lineWarn.push(`שורה ${S.val(r, 2) ?? r}: המצטבר בטופס ${money(cumCached)} שונה מהחישוב ${money(cum)} (${money(prev)} + ${money(cur || 0)}) - נלקח המצטבר שבטופס.`); cum = r2(cumCached); }
     const kind = /רכב|ק"מ|נסיע/.test(String(nm)) || (rate !== null && rate < 10) ? 'km' : 'hours';
     lines.push({row: r, no: S.val(r, 2), name: String(nm).trim(), kind, budget, employment: cols.employment ? S.input(r, cols.employment) : null, classification: cols.classification ? S.input(r, cols.classification) : null,
       rate, qty: q, prevCumulative: r2(prev), current: cur, cumulative: cum, remaining: budget !== null ? r2(budget - cum) : null, cells: c});
   }
   return {kind: '23.030', file: fileName, sheet, orderDisplay, orderDigits: digits(orderDisplay),
     invoiceNo: toNumber(invNo) !== null ? Math.round(toNumber(invNo)) : null, invoiceType: invType ? String(invType).trim() : null,
-    dealInvoiceNo: deal !== null && deal !== '' ? String(deal).trim() : null, periodFrom: toDate(dFrom), periodTo: toDate(dTo), contractEnd: toDate(cEnd), vat, lines, slots, cells};
+    dealInvoiceNo: deal !== null && deal !== '' ? String(deal).trim() : null, periodFrom: toDate(dFrom), periodTo: toDate(dTo), contractEnd: toDate(cEnd), vat, lines, slots, cells, warnings: lineWarn};
 }
 
 /* ===================================================================== 23.030 invoice: plan + write (XML patch) */
@@ -1050,6 +1055,8 @@ async function prepareInvoice(opts) {
     }
     isFirst = false;
     if (prev.orderDigits !== digits(o.number)) throw new Error('מספר ההזמנה בחשבון הקודם אינו תואם.');
+    for (const l of prev.lines) steps.push({ok: true, text: `${l.kind === 'km' ? 'ק״מ' : 'שעות'} (שורה ${l.no}): בחשבון הקודם ${money(l.prevCumulative)} תשלומים קודמים + ${money(l.current || 0)} בחשבון ההוא = ${money(l.cumulative)} → נרשם כ"תשלומים מצטברים עד החשבון הקודם"`});
+    for (const w of prev.warnings || []) steps.push({ok: null, text: w});
   }
   const plan = planNextInvoice(prev, p.name, o, S.month, n, repLinesOf(rep, o), opts.dealNo || rep.dealInvoiceNo, opts.invoiceType, isFirst);
   steps.push({ok: true, text: 'מצטברים חושבו'});
