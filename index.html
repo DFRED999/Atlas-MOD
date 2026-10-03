@@ -990,7 +990,7 @@ async function showMonths(rel) {
   catch (e) { el.innerHTML = `<span style="color:var(--bad)">✗ התיקייה לא נמצאה</span>`; }
 }
 
-const GENERATED = /^(חשבון_|חשבון_ודיווח|בדיקת_המרה)|מאוחד|^~\$/;
+const GENERATED = /^(חשבון_|חשבון_ודיווח|בדיקת_המרה)|מאוחד|לפני חתימה|^~\$/;
 const REPORT_NAME = /דיווח[\s_]*שעות|שעות[\s_]*עבודה/;
 function reportCandidates(entries) {
   const g = {};
@@ -1001,7 +1001,9 @@ function reportCandidates(entries) {
   }
   return Object.values(g);
 }
-function outputNames(month, n) { const f = folderName(month); return {xlsx: `חשבון_${f}_${n}.xlsx`, pdf: `חשבון_${f}_${n}.pdf`, merged: `חשבון_ודיווח_שעות_${f}_${n}.pdf`}; }
+// שם קצר של העובד לשם הקובץ המאוחד (שדה "שם בקובץ החשבון" בכרטיס; ברירת מחדל - השם הפרטי)
+const fileNick = p => String(p?.fileNick || (p?.name || '').trim().split(/\s+/)[0] || 'עובד').replace(/[\\/:*?"<>|]/g, '').trim();
+function outputNames(month, n, p) { const f = folderName(month); return {xlsx: `חשבון_${f}_${n}.xlsx`, pdf: `חשבון_${f}_${n}.pdf`, merged: `חשבון ${fileNick(p || personById(S.personId))} ${f} לפני חתימה.pdf`}; }
 
 /* ===================================================================== actions */
 function compareEmployee(p, e) {
@@ -1252,7 +1254,7 @@ function viewPeople(v) {
 function editPerson(id, prefill) {
   const p = id ? {...personById(id)} : {active: true, ...(prefill || {})};
   modal(id ? 'עריכת עובד' : 'עובד חדש', `<div class="form" id="pf">
-    ${fld('name', 'שם העובד (כפי שמופיע בדוח)', p.name)}${fld('fullName', 'שם מלא כפי שבהזמנה', p.fullName, {ph: 'סבר מרית אודליה'})}
+    ${fld('name', 'שם העובד (כפי שמופיע בדוח)', p.name)}${fld('fileNick', 'שם בקובץ החשבון', p.fileNick, {ph: (p.name || '').trim().split(/\s+/)[0] || 'אלון'})}${fld('fullName', 'שם מלא כפי שבהזמנה', p.fullName, {ph: 'סבר מרית אודליה'})}
     ${fld('personalId', 'ת״ז / מספר אישי', p.personalId, {ltr: true})}${fld('title', 'התואר המקצועי', p.title)}
     ${fld('degreeDate', 'מועד קבלת התואר', p.degreeDate, {type: 'date'})}${fld('rate', 'תעריף לשעה (₪)', p.rate, {num: true})}
     ${fld('role', 'תפקיד', p.role, {ph: 'מתאמת תכנון'})}${fld('classification', 'סיווג העובד (בחשבון)', p.classification, {ph: "מתאם רמה ב'"})}
@@ -1863,7 +1865,7 @@ async function stepMerge(manualFile) {
       if (!invBuf) {  // חיפוש לפי תוכן בכל קבצי ה-PDF בתיקייה
         const found = [];
         for (const e of await listEntries(mf)) {
-          if (e.kind !== 'file' || !/\.pdf$/i.test(e.name) || /חשבון_ודיווח|מאוחד/.test(e.name) || e.name === r.names.pdf) continue;
+          if (e.kind !== 'file' || !/\.pdf$/i.test(e.name) || /חשבון_ודיווח|מאוחד|לפני חתימה/.test(e.name) || e.name === r.names.pdf) continue;
           try { const b = await readFile(mf, e.name); const t = await pdfFirstPageText(b); if (pdfKind(t.text) === 'invoice' && t.text.replace(/\s/g, '').includes(fmtAmount(r.plan.totalNoVat))) found.push({name: e.name, buf: b}); } catch (x) {}
         }
         if (found.length === 1) { err = await tryInvoice(found[0].buf, found[0].name); }
@@ -1877,7 +1879,7 @@ async function stepMerge(manualFile) {
     if (!repPdfName || !await fileExists(mf, repPdfName)) {   // חיפוש לפי תוכן: PDF שהעמוד הראשון שלו טופס 23.031
       const cands = [];
       for (const e of await listEntries(mf)) {
-        if (e.kind !== 'file' || !/\.pdf$/i.test(e.name) || /חשבון_ודיווח|מאוחד/.test(e.name) || e.name === invName) continue;
+        if (e.kind !== 'file' || !/\.pdf$/i.test(e.name) || /חשבון_ודיווח|מאוחד|לפני חתימה/.test(e.name) || e.name === invName) continue;
         try { if (pdfKind((await pdfFirstPageText(await readFile(mf, e.name))).text) === 'report') cands.push(e.name); } catch (x) {}
       }
       const pref = cands.filter(n => /דיווח|שעות/.test(n));
