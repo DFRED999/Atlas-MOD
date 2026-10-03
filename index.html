@@ -139,7 +139,7 @@
   .pcard:hover{border-color:var(--accent);}
   .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
   @media (max-width:800px){ .grid2{grid-template-columns:1fr;} main{padding:12px;} header.top{padding:12px;} nav.tabs{padding:10px 12px 0;} }
-.kmConf{margin-top:4px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;color:#b8860b;font-size:12px} .kmConf button{min-height:26px}
+.aQty.manual{border-color:#b8860b;background:#fff8e1} .kmConf{margin-top:4px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;color:#b8860b;font-size:12px} .kmConf button{min-height:26px}
   .ordT thead th{background:#e8ecf7;color:#1c2b2a} .ordT td{vertical-align:middle} .ordT .ubar{height:4px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;min-width:120px}
   .ordT .ubar i{display:block;height:100%} .ordT .ubar i.ok{background:#15803d} .ordT .ubar i.mid{background:#c9a227} .ordT .ubar i.bad{background:#b42318}
   .ordT td.remLow{color:#b8860b;font-weight:700} .ordT td.daysBad{background:#c62828;color:#fff;font-weight:700} .ordT td.daysOut{color:var(--muted);text-decoration:line-through}
@@ -1655,8 +1655,7 @@ function suggestLines(o, d) {
       const rows = (l.type === 'hours' ? hl : kl).length > 1 ? d.rows.filter(x => inRange(l, x.date)) : d.rows;
       if (l.type === 'hours') q = (hl.length > 1) ? r2(rows.reduce((a, x) => a + x.hours, 0)) : d.hours.final;
       else { const days = new Set(rows.filter(x => x.hours > 0).map(x => x.date)).size; const per = l.dailyKm || d.km.perDay || 0; q = days * per;
-        note = `${days} ימים × ${per}` + (l.dailyKm && d.km.perDay && l.dailyKm !== d.km.perDay ? ` (מכסה יומית לפי ההזמנה; בדוח ${d.km.perDay})` : '');
-        if (l.dailyKm && d.km.perDay && l.dailyKm !== d.km.perDay) return {line: l, qty: q, note, kmConflict: {days, order: l.dailyKm, report: d.km.perDay}}; }
+        note = `${days} ימים × ${per} ק״מ ליום ${l.dailyKm ? '(לפי ההזמנה)' : '(לפי הדוח - בהזמנה לא הוגדרה מכסה)'}` + (l.dailyKm && d.km.perDay && l.dailyKm !== d.km.perDay ? ` · בדוח רשום ${d.km.perDay}` : ''); }
       if ((l.type === 'hours' ? hl : kl).length > 1) note = (note ? note + ' · ' : '') + `שורות מתאריך ${dateHe(l.from)} עד ${dateHe(l.to)}`;
     }
     return {line: l, qty: q, note};
@@ -1679,22 +1678,21 @@ function renderAssignLines() {
   const el = $('#aLines'); if (!el) return; const o = orderById($('#aOrder')?.value); if (!o) { el.innerHTML = ''; return; }
   const d = S.scan?.parsed, saved = reportFor(S.personId, S.month);
   const sug = suggestLines(o, d);
-  const savedQty = l => { if (!saved || saved.orderId !== o.id) return null; const x = repLinesOf(saved, o).find(y => y.type === l.type && String(y.itemNo ?? '') === String(l.itemNo ?? '')); return x ? x.qty : null; };
+  const savedLine = l => { if (!saved || saved.orderId !== o.id) return null; return repLinesOf(saved, o).find(y => y.type === l.type && String(y.itemNo ?? '') === String(l.itemNo ?? '')) || null; };
+  // ברירת מחדל: החישוב האוטומטי (שעות מהדוח, ק״מ = ימי עבודה × מכסת ההזמנה). כמות שתוקנה ידנית נשמרת ומוצגת כתיקון.
+  const isManual = (sl, sug) => !!sl && (sl.manual === true || (sl.manual === undefined && Number(sl.qty) && sug !== null && Math.abs(Number(sl.qty) - sug) > 0.001));
   const split = new Set(sug.map(x => x.line.to)).size > 1;
   el.innerHTML = (split ? `<div class="alert info">החודש ${monthLabel(S.month)} מתחלק בין שתי תקופות של ההזמנה. השעות והק״מ פוצלו לפי תאריכי השורות בדוח - כל פריט מקבל רק את הימים של התקופה שלו.</div>` : '') +
     `<div class="tableWrap"><table><thead><tr><th>פריט</th><th>סוג</th><th>תקופה</th><th>תעריף</th><th>חולץ מהדוח</th><th>כמות לחיוב</th><th>סכום</th></tr></thead><tbody>` +
-    sug.map(x => { const v = savedQty(x.line) ?? x.qty ?? ''; return `<tr><td class="n">${esc(x.line.itemNo || '—')}</td><td>${x.line.type === 'hours' ? 'שעות' : 'ק״מ'}</td>
+    sug.map(x => { const sl = savedLine(x.line), man = isManual(sl, x.qty); const v = man ? sl.qty : (x.qty ?? sl?.qty ?? ''); return `<tr><td class="n">${esc(x.line.itemNo || '—')}</td><td>${x.line.type === 'hours' ? 'שעות' : 'ק״מ'}</td>
       <td class="n small">${x.line.from || x.line.to ? `${dateHe(x.line.from)} – ${dateHe(x.line.to)}` : '—'}</td><td class="n">${money(x.line.rate)}</td>
-      <td class="n">${x.qty === null ? '—' : qty(x.qty)}<div class="small muted">${esc(x.note)}</div>${x.kmConflict ? `<div class="kmConf"><span>⚠ מכסת הק״מ בהזמנה (${x.kmConflict.order}) שונה מהדוח (${x.kmConflict.report})</span>
-        <button class="small" onclick="const i=this.closest('tr').querySelector('.aQty'); i.value=${x.kmConflict.days * x.kmConflict.report}; assignChecks()">חשב לפי הדוח (${x.kmConflict.days} × ${x.kmConflict.report})</button>
-        <button class="small" onclick="const i=this.closest('tr').querySelector('.aQty'); i.value=${x.kmConflict.days * x.kmConflict.order}; assignChecks()">לפי ההזמנה (${x.kmConflict.days} × ${x.kmConflict.order})</button>
-        <button class="small ghost" onclick="setOrderDailyKm('${o.id}','${esc(x.line.itemNo ?? '')}',${x.kmConflict.report})">עדכן בהזמנה ל-${x.kmConflict.report}</button></div>` : ''}</td>
-      <td><input class="num aQty" data-item="${esc(x.line.itemNo ?? '')}" data-type="${x.line.type}" data-rate="${x.line.rate || 0}" value="${esc(v)}" style="width:100px" oninput="assignChecks()"></td>
+      <td class="n">${x.qty === null ? '—' : qty(x.qty)}<div class="small muted">${esc(x.note)}</div></td>
+      <td><input class="num aQty ${man ? 'manual' : ''}" data-item="${esc(x.line.itemNo ?? '')}" data-type="${x.line.type}" data-rate="${x.line.rate || 0}" data-sug="${x.qty ?? ''}" value="${esc(v)}" style="width:100px" oninput="this.classList.toggle('manual', this.dataset.sug !== '' && Math.abs(Number(this.value || 0) - Number(this.dataset.sug)) > 0.001); assignChecks()">
+        ${man ? `<div class="small" style="color:#b8860b">✎ תוקן ידנית (מחושב: ${qty(x.qty)}) · <a href="#" onclick="const i=this.closest('td').querySelector('.aQty'); i.value=i.dataset.sug; i.classList.remove('manual'); this.parentNode.remove(); assignChecks(); return false">החזר לחישוב</a></div>` : ''}</td>
       <td class="n aAmt"></td></tr>`; }).join('') + `</tbody></table></div>` +
     (d && sug.filter(x => x.line.type === 'hours').length > 1 && Math.abs(sug.filter(x => x.line.type === 'hours').reduce((a, x) => a + (x.qty || 0), 0) - d.hours.final) > 0.01
       ? `<div class="alert warn">סכום השעות אחרי הפיצול שונה מסה״כ בטופס (${qty(d.hours.final)}).</div>` : '') +
-    (d?.order?.number && digits(d.order.number) !== digits(o.number) ? `<div class="alert warn">⚠ בדוח השעות רשומה הזמנה ${esc(d.order.number)} (תוקף ${dateHe(d.order.validFrom)}–${dateHe(d.order.validTo)}) ולא ${esc(o.number)} שנבחרה. כנראה הדוח מולא על תבנית של ההזמנה הקודמת - עדכן את פרטי ההזמנה בדוח לפני ההגשה.</div>` : '') +
-    (saved && saved.orderId === o.id && d && sug.some(x => x.qty && !Number(savedQty(x.line))) ? `<div class="alert info">בשדות "כמות לחיוב" מוצגות הכמויות מהשיוך השמור (0). <a href="#" onclick="document.querySelectorAll('.aQty').forEach((el,i)=>{const q=${JSON.stringify(sug.map(x => x.qty))}[i]; if(q!==null) el.value=q}); assignChecks(); return false">העתק את הכמויות שחולצו מהדוח</a></div>` : '');
+    (d?.order?.number && digits(d.order.number) !== digits(o.number) ? `<div class="alert warn">⚠ בדוח השעות רשומה הזמנה ${esc(d.order.number)} (תוקף ${dateHe(d.order.validFrom)}–${dateHe(d.order.validTo)}) ולא ${esc(o.number)} שנבחרה. כנראה הדוח מולא על תבנית של ההזמנה הקודמת - עדכן את פרטי ההזמנה בדוח לפני ההגשה.</div>` : '');
   assignChecks();
 }
 async function setOrderDailyKm(orderId, itemNo, v) {
@@ -1728,7 +1726,7 @@ async function saveAssign() {
   const d = S.scan.parsed, rp = S.scan.report || {}, orderId = $('#aOrder').value;
   const old = S.db.reports.find(x => x.personId === S.personId && x.month === S.month);
   if (old && old.orderId !== orderId) removeRecs('reports', x => x === old);
-  const lines = assignQtys().map(({itemNo, type, qty}) => ({itemNo, type, qty}));
+  const lines = [...document.querySelectorAll('.aQty')].map(el => ({itemNo: el.dataset.item || null, type: el.dataset.type, qty: Number(el.value || 0), manual: el.dataset.sug !== '' && Math.abs(Number(el.value || 0) - Number(el.dataset.sug)) > 0.001}));
   const sum = t => r2(lines.filter(x => x.type === t).reduce((a, x) => a + x.qty, 0));
   const rec = {...(old || {}), id: reportId(S.personId, S.month, orderId), personId: S.personId, month: S.month, orderId, lines,
     hours: sum('hours'), km: sum('km'), dealInvoiceNo: $('#aDeal').value.trim() || null,
