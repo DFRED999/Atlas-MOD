@@ -724,10 +724,12 @@ async function parseOrderPdf(buf, fileName) {
     const ns = line.match(/[\d,]+(?:\.\d+)?/g) || [];
     if (ns.length !== 3 || /[\u0590-\u05FF]/.test(line)) return;
     const [q, rate, total] = ns.map(n); if (!q || !rate || !total || Math.abs(q * rate - total) > 1) return;
-    const nx = pg[i + 1] || ''; const mm = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(nx); if (!mm) return;
+    const nx = pg[i + 1] || ''; const mm = /^\s*(\d+)(?:\s+(\d+))?\s+(\D.*)$/.exec(nx); if (!mm) return;
     const rest = mm[3]; const unit = /שעה/.test(rest) ? 'שעה' : /(^|\s)יח($|\s)/.test(rest) ? 'יח' : null; if (!unit) return;
     let id = null; for (const ex of pg.slice(i + 2, i + 5)) if (ex.includes('ת.ז')) { const im = /(\d{5,9})/.exec(ex); id = im ? im[1] : null; break; }
-    items.push({itemNo: mm[1], qty: q, rate, total, unit, type: unit === 'שעה' ? 'hours' : 'km',
+    // סוג השורה לפי התיאור (בחלק מההזמנות שורת הק״מ מופיעה ביחידה "שעה"), ואז לפי היחידה
+    const isKm = /ק["״']?מ|נסיע|רכב/.test(rest) || (unit === 'יח' && rate < 10);
+    items.push({itemNo: mm[1], qty: q, rate, total, unit, type: isKm ? 'km' : 'hours',
       desc: rest.replace(/^תיאור\s*:?\s*/, '').replace(/\s*(שעה|יח)\s*$/, '').trim(), consultantId: id});
   });
   // מועד אספקה לכל פריט (דף "פריטים / שירותים"): "30 תיאור: ... 15.02.2027"
@@ -1348,7 +1350,7 @@ function editOrder(id, prefill) {
     ${fld('personId', 'עובד', o.personId, {type: 'select', options: [['', '— בחר —'], ...people().map(p => [p.id, p.name])]})}
     ${fld('number', 'מספר הזמנה', o.number, {ltr: true, ph: '444-142-9536'})}${fld('version', 'גרסה', o.version, {ltr: true})}
     ${fld('branch', 'גוף דורש (כפי שבחשבון)', o.branch, {ph: "אהו''ב - ענף דרום"})}${fld('validFrom', 'תחילת תוקף', o.validFrom, {type: 'date'})}
-    ${fld('validTo', 'סוף תוקף', o.validTo, {type: 'date'})}${fld('protocol', "מס' החלטה / פרוטוקול", o.protocol, {ltr: true})}${fld('site', 'פרויקט / אתר (לתצוגה)', o.site, {ph: 'עידן חדש'})}
+    ${fld('validTo', 'סוף תוקף', o.validTo, {type: 'date'})}${fld('dailyKm', 'ק״מ יומי מאושר (מההזמנה)', o.dailyKm, {num: true})}${fld('protocol', "מס' החלטה / פרוטוקול", o.protocol, {ltr: true})}${fld('site', 'פרויקט / אתר (לתצוגה)', o.site, {ph: 'עידן חדש'})}
     ${fld('usedBase', 'ניצול מחשבונות שלפני המערכת (₪, ללא מע״מ)', o.usedBase, {num: true})}${fld('usedAsOf', 'נכון לסוף חודש', o.usedAsOf, {type: 'month'})}</div>
     <div class="small muted">ניצול ההזמנה מחושב מהמצטבר בחשבון האחרון שהופק במערכת. אם עוד לא הופק חשבון במערכת - מהסכום הידני כאן ועוד החודשים שאחריו.</div>
     <h3>שורות ההזמנה (פריטים)</h3>
@@ -1400,10 +1402,20 @@ function importOrderPdf() {
     };
     const lines = r.items.map(it => ({itemNo: it.itemNo, type: it.type, label: it.type === 'km' ? 'הוצאות רכב' : 'שעות עבודה', rate: it.rate, qty: it.qty, budget: it.total,
       from: it.from, to: it.to, protocol: it.protocol, ...carry(it, it.type)}));
-    const fields = {number: r.numberFormatted, version: r.version, validFrom: r.validFrom, validTo: r.validTo, protocol: r.protocol, sourcePdf: r.file, periods: r.periods, lines};
+    const fields = {number: r.numberFormatted, version: r.version, validFrom: r.validFrom, validTo: r.validTo, protocol: r.protocol, sourcePdf: r.file, periods: r.periods, lines, ...(r.dailyKm ? {dailyKm: r.dailyKm} : {})};
     const perTxt = r.periods.length > 1 ? ` · ${r.periods.length} תקופות: ` + r.periods.map(p => `${dateHe(p.from)}–${dateHe(p.to)}`).join(', ') : '';
     if (ex) {
-      if (String(ex.version) === String(r.version)) { toast(`הזמנה ${r.numberFormatted} גרסה ${r.version} כבר קיימת`); return editOrder(ex.id); }
+      if (String(ex.version) === String(r.version)) {   // אותה גרסה - מרעננים את הנתונים מה-PDF (שורות, מכסת ק״מ) בלי ליצור גרסה בהיסטוריה
+        const diffs = [];
+        if (r.dailyKm && Number(ex.dailyKm) !== r.dailyKm) diffs.push(`ק״מ יומי: ${ex.dailyKm ?? linesOf(ex, 'km')[0]?.dailyKm ?? '—'} ← ${r.dailyKm}`);
+        const oldSig = JSON.stringify(linesOf(ex).map(l => [String(l.itemNo), l.type, l.rate, l.qty, l.dailyKm ?? null])), newSig = JSON.stringify(linesOf({lines}).map(l => [String(l.itemNo), l.type, l.rate, l.qty, l.dailyKm ?? null]));
+        if (oldSig !== newSig) diffs.push(`שורות: ${linesOf(ex).map(l => `${l.itemNo} ${l.type === 'km' ? 'ק״מ' : 'שעות'}`).join(', ')} ← ${lines.map(l => `${l.itemNo} ${l.type === 'km' ? 'ק״מ' : 'שעות'}`).join(', ')}`);
+        if (!diffs.length) { toast(`הזמנה ${r.numberFormatted} גרסה ${r.version} כבר קיימת ומעודכנת`); return editOrder(ex.id); }
+        if (!confirm(`הזמנה ${r.numberFormatted} גרסה ${r.version} כבר קיימת, אבל הנתונים במערכת שונים מה-PDF:\n${diffs.join('\n')}\n\nלעדכן לפי ה-PDF?`)) return editOrder(ex.id);
+        const keep = new Map(linesOf(ex).map(l => [String(l.itemNo), l]));
+        upsert('orders', {...ex, ...fields, personId: ex.personId, branch: ex.branch || who?.branch || '', lines: lines.map(l => ({...l, monthlyHours: l.monthlyHours ?? keep.get(String(l.itemNo))?.monthlyHours ?? null}))}); await saveDb();
+        toast('ההזמנה עודכנה לפי ה-PDF'); return editOrder(ex.id);
+      }
       const oldNos = linesOf(ex).map(l => String(l.itemNo || '')); const added = lines.filter(l => !oldNos.includes(String(l.itemNo)));
       const msg = `הזמנה ${r.numberFormatted} קיימת במערכת (גרסה ${ex.version || 0}, ${linesOf(ex).length} שורות).\n\nגרסה ${r.version}${r.replacesPrevious ? ' (מחליפה את הקודמת)' : ''}: ${lines.length} שורות, תוקף עד ${dateHe(r.validTo)}` +
         (added.length ? `\nשורות חדשות: ${added.map(l => `${l.itemNo} (${l.type === 'hours' ? 'שעות' : 'ק״מ'}, ${dateHe(l.from)}–${dateHe(l.to)}, ₪${num(l.budget, 0)})`).join(', ')}` : '') +
@@ -1654,8 +1666,8 @@ function suggestLines(o, d) {
     if (d) {
       const rows = (l.type === 'hours' ? hl : kl).length > 1 ? d.rows.filter(x => inRange(l, x.date)) : d.rows;
       if (l.type === 'hours') q = (hl.length > 1) ? r2(rows.reduce((a, x) => a + x.hours, 0)) : d.hours.final;
-      else { const days = new Set(rows.filter(x => x.hours > 0).map(x => x.date)).size; const per = l.dailyKm || d.km.perDay || 0; q = days * per;
-        note = `${days} ימים × ${per} ק״מ ליום ${l.dailyKm ? '(לפי ההזמנה)' : '(לפי הדוח - בהזמנה לא הוגדרה מכסה)'}` + (l.dailyKm && d.km.perDay && l.dailyKm !== d.km.perDay ? ` · בדוח רשום ${d.km.perDay}` : ''); }
+      else { const days = new Set(rows.filter(x => x.hours > 0).map(x => x.date)).size; const per = o.dailyKm || l.dailyKm || d.km.perDay || 0; /* מכסת ההזמנה קובעת */ q = days * per;
+        note = `${days} ימים × ${per} ק״מ ליום ${o.dailyKm || l.dailyKm ? '(לפי ההזמנה)' : '(לפי הדוח - בהזמנה לא הוגדרה מכסה)'}` + ((o.dailyKm || l.dailyKm) && d.km.perDay && per !== d.km.perDay ? ` · בדוח רשום ${d.km.perDay}` : ''); }
       if ((l.type === 'hours' ? hl : kl).length > 1) note = (note ? note + ' · ' : '') + `שורות מתאריך ${dateHe(l.from)} עד ${dateHe(l.to)}`;
     }
     return {line: l, qty: q, note};
