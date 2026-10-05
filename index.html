@@ -190,6 +190,29 @@
     .alertRow td{padding:2px 0;border:none;} .alertRow td:last-child{display:none;} .alertRow td.alActs .row{justify-content:flex-start !important;flex-wrap:wrap !important;margin-top:4px;}
     .legend{font-size:11.5px;gap:10px;}
   }
+
+/* ---- מסך כניסה ---- */
+#gate{position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#14213d 0%,#1f3160 55%,#0d1830 100%);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto}
+#gate .box{background:#fff;border-radius:18px;box-shadow:0 26px 70px rgba(0,0,0,.45);width:100%;max-width:430px;padding:30px 28px 24px;text-align:center}
+#gate .lg{font-size:32px;font-weight:800;letter-spacing:5px;color:#14213d;line-height:1}
+#gate .lg small{display:block;font-size:12px;letter-spacing:2px;color:#c9a227;font-weight:700;margin-top:3px}
+#gate .co{font-size:13px;font-weight:700;color:#14213d;margin-top:8px}
+#gate .ids{font-size:11px;color:#6b7385;margin-top:2px}
+#gate .sub{font-size:13px;color:#6b7385;margin:16px 0 14px;border-top:1px solid #dfe2ea;padding-top:14px}
+#gate .f{text-align:start;margin-bottom:10px}
+#gate .f label{display:block;font-size:12px;font-weight:600;color:#14213d;margin-bottom:3px}
+#gate .f input{width:100%;padding:10px 12px;border:1.5px solid #dfe2ea;border-radius:9px;font-size:15px;direction:ltr;font-family:inherit}
+#gate .f input:focus{outline:0;border-color:#c9a227}
+#gate .go{width:100%;padding:11px;border:0;border-radius:9px;background:#14213d;color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;font-family:inherit}
+#gate .go:hover{background:#1f3160}
+#gate .lnk{background:0;border:0;color:#6b7385;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:12px;font-family:inherit}
+#gate .lnk:hover{color:#14213d}
+#gate .err{background:#fde8e8;color:#c62828;border-radius:9px;padding:9px 11px;font-size:12.5px;font-weight:600;margin-bottom:12px;text-align:start}
+#gate .wait{font-size:13px;color:#6b7385;padding:22px 0}
+#gate .spin{width:26px;height:26px;border:3px solid #d9d5f7;border-top-color:#14213d;border-radius:50%;margin:0 auto 10px;animation:gspin .9s linear infinite}
+@keyframes gspin{to{transform:rotate(360deg)}}
+#gate .setup{margin-top:14px;border-top:1px solid #dfe2ea;padding-top:12px;text-align:start}
+#gate .setup .hint{font-size:11.5px;color:#6b7385;line-height:1.6;margin-bottom:6px}
 </style>
 </head>
 <body>
@@ -817,6 +840,137 @@ async function writeDataFile() {
   try { const fh = await S.root.getFileHandle(DATA_FILE, {create: true}); const w = await fh.createWritable(); await w.write(JSON.stringify({schema: 'atlas-mod', version: 1, ...S.db}, null, 1)); await w.close(); }
   catch (e) { console.warn('data file', e); }
 }
+
+/* ===================================================================== הזדהות (Firebase Auth דרך REST)
+   רק כתובות שברשימת המורשים ושיש להן משתמש בפרויקט יכולות להיכנס.
+   האסימון נשמר ומתחדש לבד; מה שחוסם בפועל הם כללי האבטחה במסד. */
+const FB_API_KEY_DEFAULT = '';            /* ← מפתח ה-Web API של פרויקט atlas-mod */
+const AUTH_ALLOW = ['denis@atlas-bd.co.il', 'bari@atlas-bd.co.il'];
+const AUTH = {idToken: '', refreshToken: '', email: '', expAt: 0, skip: false, busy: false, err: '', slow: false, ready: false};
+function fbKey() { let k = ''; try { k = localStorage.getItem('atlasmod.key') || ''; } catch (e) {} return (k || FB_API_KEY_DEFAULT).trim(); }
+function authAllowed(em) { const e = String(em || '').toLowerCase(); return !AUTH_ALLOW.length || AUTH_ALLOW.some(x => x.toLowerCase() === e); }
+function authSave() { try { localStorage.setItem('atlasmod.auth', JSON.stringify({r: AUTH.refreshToken, e: AUTH.email})); } catch (e) {} }
+function authClear() { AUTH.idToken = ''; AUTH.refreshToken = ''; AUTH.expAt = 0; try { localStorage.removeItem('atlasmod.auth'); } catch (e) {} }
+function authNeeded() { return !!fbUrl() && !AUTH.idToken && !AUTH.skip; }
+function authQS(extra) { return AUTH.idToken ? (extra ? '&' : '?') + 'auth=' + encodeURIComponent(AUTH.idToken) : ''; }
+function authErrText(code) {
+  const c = String(code || '');
+  if (/EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS/i.test(c)) return 'אימייל או סיסמה שגויים';
+  if (/USER_DISABLED/i.test(c)) return 'המשתמש חסום';
+  if (/TOO_MANY_ATTEMPTS/i.test(c)) return 'יותר מדי ניסיונות – נסה שוב בעוד כמה דקות';
+  if (/MISSING_PASSWORD|MISSING_EMAIL/i.test(c)) return 'יש להזין אימייל וסיסמה';
+  if (/API key not valid|INVALID_API_KEY|API_KEY/i.test(c)) return 'מפתח ה-API של הפרויקט שגוי';
+  if (/OPERATION_NOT_ALLOWED/i.test(c)) return 'כניסה עם אימייל וסיסמה לא הופעלה בפרויקט';
+  if (/Failed to fetch|NetworkError/i.test(c)) return 'אין חיבור לרשת';
+  return c || 'ההתחברות נכשלה';
+}
+async function authPost(url, body) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || ('HTTP ' + r.status));
+  return j;
+}
+async function authSignIn(email, pw) {
+  if (!fbKey()) throw new Error('API_KEY');
+  const j = await authPost('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=' + encodeURIComponent(fbKey()),
+    {email: email, password: pw, returnSecureToken: true});
+  if (!authAllowed(j.email)) { throw new Error('NOT_ALLOWED:' + j.email); }
+  AUTH.idToken = j.idToken; AUTH.refreshToken = j.refreshToken; AUTH.email = j.email;
+  AUTH.expAt = Date.now() + (Number(j.expiresIn || 3600) - 120) * 1000;
+  authSave();
+}
+async function authRefresh() {
+  if (!AUTH.refreshToken || !fbKey()) return false;
+  try {
+    const r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + encodeURIComponent(fbKey()),
+      {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+       body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(AUTH.refreshToken)});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.id_token) { authClear(); return false; }
+    AUTH.idToken = j.id_token; AUTH.refreshToken = j.refresh_token || AUTH.refreshToken;
+    AUTH.expAt = Date.now() + (Number(j.expires_in || 3600) - 120) * 1000;
+    authSave(); return true;
+  } catch (e) { return false; }
+}
+/* לפני כל פנייה למסד – מוודאים שהאסימון בתוקף */
+async function authEnsure() { if (AUTH.idToken && Date.now() < AUTH.expAt) return true; return await authRefresh(); }
+async function authInit() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('atlasmod.auth') || 'null'); } catch (e) {}
+  if (saved && saved.r) { AUTH.refreshToken = saved.r; AUTH.email = saved.e || ''; AUTH.busy = true; gateRender(); await authRefresh(); AUTH.busy = false; }
+  AUTH.ready = true; gateRender();
+}
+function authSignOut() { authClear(); AUTH.skip = false; AUTH.err = ''; CLOUD.state = 'off'; gateRender(); renderChips(); }
+
+/* ---------- מסך הכניסה ---------- */
+function gateRender() {
+  const need = authNeeded();
+  let el = $('#gate');
+  if (!need) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div'); el.id = 'gate'; document.body.appendChild(el);
+    el.addEventListener('click', gateClick);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); gateIn(); } });
+    setTimeout(() => { if ($('#gate') && !AUTH.idToken) { AUTH.slow = true; gateRender(); } }, 8000);
+  }
+  const head = `<div class="lg">ATLAS<small>MOD</small></div><div class="co">ב.ד. אטלס הנדסה וניהול פרויקטים</div>
+    <div class="ids">ח.פ. 516797214 · מספר ספק (מ.ס.) 11027652</div>`;
+  if (AUTH.busy || !AUTH.ready) { el.innerHTML = `<div class="box">${head}<div class="wait"><div class="spin"></div>מתחבר…</div></div>`; return; }
+  let h = `<div class="box">${head}<div class="sub">הזדהות נדרשת לכניסה למערכת</div>`;
+  if (AUTH.err) h += `<div class="err">${esc(AUTH.err)}</div>`;
+  h += `<div class="f"><label for="gEmail">אימייל</label><input id="gEmail" type="email" dir="ltr" autocomplete="username" value="${esc(AUTH.email || AUTH_ALLOW[0] || '')}"></div>
+    <div class="f"><label for="gPw">סיסמה</label><input id="gPw" type="password" dir="ltr" autocomplete="current-password"></div>
+    <button class="go" data-g="in">כניסה</button>
+    <button class="lnk" data-g="reset">שכחתי סיסמה</button>`;
+  if (!fbKey()) {
+    h += `<div class="setup"><div class="hint">הגדרה חד-פעמית: נדרש מפתח ה-Web API של הפרויקט.<br>Firebase Console → ⚙ Project settings → General → <b dir="ltr">Web API Key</b></div>
+      <div class="f"><input id="gKey" dir="ltr" placeholder="AIzaSy…"></div><button class="go" data-g="key">שמירת המפתח</button></div>`;
+  }
+  if (AUTH.slow) h += `<div class="setup"><button class="lnk" data-g="local">אין חיבור לענן – המשך לעבודה מקומית בלבד</button></div>`;
+  el.innerHTML = h + '</div>';
+  const f = $('#gPw'); if (f) setTimeout(() => f.focus(), 30);
+}
+async function gateIn() {
+  const em = ($('#gEmail') || {}).value || '', pw = ($('#gPw') || {}).value || '';
+  AUTH.email = em.trim();
+  if (!AUTH.email || !pw) { AUTH.err = 'יש להזין אימייל וסיסמה'; gateRender(); return; }
+  AUTH.err = ''; AUTH.busy = true; gateRender();
+  try {
+    await authSignIn(AUTH.email, pw);
+    AUTH.busy = false; gateRender(); renderChips();
+    startCloud(); toast('ברוך הבא, ' + AUTH.email);
+  } catch (e) {
+    AUTH.busy = false;
+    const m = String(e.message || '');
+    AUTH.err = m.startsWith('NOT_ALLOWED:') ? ('הכתובת ' + m.slice(12) + ' אינה מורשית לגשת למערכת') : authErrText(m);
+    gateRender();
+  }
+}
+function gateClick(e) {
+  const b = e.target.closest('[data-g]'); if (!b) return;
+  e.preventDefault();
+  const k = b.dataset.g;
+  if (k === 'in') return gateIn();
+  if (k === 'local') { AUTH.skip = true; gateRender(); toast('עבודה מקומית – הנתונים נשמרים במחשב הזה בלבד ואינם מסונכרנים', true); return; }
+  if (k === 'key') {
+    const v = (($('#gKey') || {}).value || '').trim();
+    if (!v) { AUTH.err = 'יש להזין מפתח'; return gateRender(); }
+    try { localStorage.setItem('atlasmod.key', v); } catch (e2) {}
+    AUTH.err = ''; gateRender();
+    return;
+  }
+  if (k === 'reset') {
+    const em = (($('#gEmail') || {}).value || '').trim();
+    if (!em) { AUTH.err = 'יש להזין קודם את כתובת האימייל'; return gateRender(); }
+    if (!fbKey()) { AUTH.err = 'חסר מפתח ה-API של הפרויקט'; return gateRender(); }
+    AUTH.busy = true; gateRender();
+    authPost('https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=' + encodeURIComponent(fbKey()),
+      {requestType: 'PASSWORD_RESET', email: em})
+      .then(() => { AUTH.busy = false; AUTH.err = ''; gateRender(); toast('נשלח מייל לאיפוס סיסמה אל ' + em); })
+      .catch(err => { AUTH.busy = false; AUTH.err = authErrText(err.message); gateRender(); });
+  }
+}
+
 /* ===================================================================== מסד נתונים משותף (Firebase Realtime Database, REST)
    מיזוג לפי רשומה: לכל רשומה updatedAt - הגרסה החדשה יותר נשמרת. מחיקות נרשמות ב-deleted כדי שלא "יחזרו". */
 const FIREBASE_URL_DEFAULT = 'https://atlas-mod-default-rtdb.europe-west1.firebasedatabase.app';
@@ -842,15 +996,24 @@ function mergeDb(local, remote) {
 function removeRecs(list, pred) { const now = new Date().toISOString(); S.db.deleted = S.db.deleted || {}; for (const r of S.db[list].filter(pred)) S.db.deleted[r.id] = now; S.db[list] = S.db[list].filter(r => !pred(r)); }
 const dbSig = d => JSON.stringify(LISTS.map(k => (d[k] || []).map(r => r.id + '|' + (r.updatedAt || '')).sort())) + JSON.stringify(d.settings || {}) + Object.keys(d.deleted || {}).length;
 async function fbGet(path, etag) {
-  const r = await fetch(`${fbUrl()}/${path}.json`, etag && CLOUD.etagOk ? {headers: {'X-Firebase-ETag': 'true'}} : {});
+  await authEnsure();
+  const r = await fetch(`${fbUrl()}/${path}.json${authQS()}`, etag && CLOUD.etagOk ? {headers: {'X-Firebase-ETag': 'true'}} : {});
+  if (r.status === 401 || r.status === 403) { await fbDenied(); throw new Error('אין הרשאה – יש להתחבר מחדש'); }
   if (!r.ok) throw new Error(`Firebase ${r.status}`);
   return {data: await r.json(), etag: r.headers.get('ETag')};
 }
+/* נדחינו על ידי המסד: מנסים לרענן אסימון, ואם לא – מחזירים את מסך הכניסה */
+async function fbDenied() {
+  if (await authRefresh()) return;
+  authClear(); AUTH.err = 'פג תוקף ההתחברות – יש להיכנס מחדש'; gateRender();
+}
 async function fbPut(path, data, etag) {
   const h = {'Content-Type': 'application/json'}; if (etag && CLOUD.etagOk) h['if-match'] = etag;
-  const r = await fetch(`${fbUrl()}/${path}.json`, {method: 'PUT', headers: h, body: JSON.stringify(data)});
+  await authEnsure();
+  const r = await fetch(`${fbUrl()}/${path}.json${authQS()}`, {method: 'PUT', headers: h, body: JSON.stringify(data)});
   if (r.status === 412) return {conflict: true};
-  if (!r.ok) throw new Error(`Firebase ${r.status}${r.status === 401 || r.status === 403 ? ' - אין הרשאה (בדוק את כללי האבטחה במסד הנתונים)' : ''}`);
+  if (r.status === 401 || r.status === 403) { await fbDenied(); throw new Error('אין הרשאה – יש להתחבר מחדש'); }
+  if (!r.ok) throw new Error(`Firebase ${r.status}`);
   return {ok: true};
 }
 function cloudChip() {
@@ -864,7 +1027,7 @@ let cloudTimer = null;
 function cloudSchedule() { if (!fbUrl()) return; CLOUD.dirty = true; clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudSync(), 700); }
 /* סנכרון: קורא מהענן, ממזג עם השינויים המקומיים, וכותב בחזרה (עם ETag - אם מישהו כתב בינתיים, מנסה שוב) */
 async function cloudSync(manual) {
-  if (!fbUrl()) return;
+  if (!fbUrl() || authNeeded() || AUTH.skip) return;
   if (CLOUD.busy) { CLOUD.pending = true; return; }
   CLOUD.busy = true; CLOUD.state = 'sync'; renderChips();
   try {
@@ -909,7 +1072,7 @@ async function pushLocalBlobs() {
 }
 /* בדיקה תקופתית: אם מישהו אחר עדכן - מושכים וממזגים */
 async function cloudPoll() {
-  if (!fbUrl() || CLOUD.busy || document.hidden) return;
+  if (!fbUrl() || CLOUD.busy || document.hidden || authNeeded() || AUTH.skip) return;
   try { const {data} = await fbGet(FB_NODE + '/updatedAt'); if (data && data !== CLOUD.lastRemote) await cloudSync(); else if (CLOUD.state === 'err') await cloudSync(); } catch (e) { CLOUD.state = 'err'; CLOUD.err = e.message; renderChips(); }
 }
 let rerenderPending = false;
@@ -925,7 +1088,11 @@ function cloudCard() {
     <p class="small">כשמוגדרת כתובת, כל הנתונים (עובדים, הזמנות, שיוכים, פרויקטים, מתכננים, חשבונות) ותבניות ה-Excel נשמרים במסד המשותף, וכל מי שפותח את האתר רואה את אותם נתונים. עדכונים של השותף מגיעים אוטומטית תוך כחצי דקה.</p>
     <div class="row"><input id="fbUrlIn" class="num grow" dir="ltr" value="${esc(fbUrl())}" placeholder="https://xxxx-default-rtdb.europe-west1.firebasedatabase.app/"><button onclick="saveFbUrl()">שמור וחבר</button><button class="small" onclick="cloudSync(true)">סנכרן עכשיו</button></div>
     <div class="small" style="margin-top:6px">מצב: ${!fbUrl() ? 'לא מוגדר - הנתונים נשמרים רק במחשב הזה' : CLOUD.state === 'ok' ? `<span style="color:var(--good)">✓ מחובר ומסונכרן</span>` : CLOUD.state === 'err' ? `<span style="color:var(--bad)">✗ ${esc(CLOUD.err)}</span>` : 'מתחבר…'}${FIREBASE_URL_DEFAULT ? ' · כתובת ברירת המחדל מוגדרת באתר' : ''}</div>
-    <p class="small muted">⚠ המסד פתוח ללא סיסמה: כל מי שיודע את הכתובת שלו יכול לקרוא ולשנות את הנתונים.</p></div>`;
+    <div class="small" style="margin-top:8px;border-top:1px solid var(--line,#dfe2ea);padding-top:8px">
+      משתמש מחובר: <b dir="ltr">${esc(AUTH.email || '—')}</b>${AUTH.idToken ? ` <button class="small" onclick="authSignOut()">התנתקות</button>` : ''}
+      <div class="muted" style="margin-top:4px">מורשים: <span dir="ltr">${AUTH_ALLOW.map(esc).join(', ')}</span> · הגישה נאכפת בכללי האבטחה של המסד.</div>
+      ${fbKey() ? '' : '<div style="color:var(--bad,#c62828);margin-top:4px">חסר מפתח Web API – ההתחברות לא תעבוד.</div>'}
+    </div></div>`;
 }
 async function saveFbUrl() {
   const u = $('#fbUrlIn').value.trim(); if (u && !/^https:\/\/.+(firebaseio\.com|firebasedatabase\.app)/.test(u)) return toast('כתובת Firebase לא תקינה', true);
@@ -2625,11 +2792,18 @@ function rptPrint() {
   if (!window.XLSX || !window.JSZip || !window.PDFLib) toast('חלק מהרכיבים לא נטענו - בדוק חיבור לאינטרנט ורענן את הדף.', true);
   if (S.personId && !personById(S.personId)) S.personId = null;
   render();
-  if (fbUrl()) { await cloudSync(); setInterval(cloudPoll, 20000); window.addEventListener('focus', cloudPoll); }
-  else setInterval(() => { if (fbUrl()) cloudPoll(); }, 20000);
+  await authInit();
+  if (!authNeeded()) startCloud();
 })();
+let cloudStarted = false;
+function startCloud() {
+  if (cloudStarted) return; cloudStarted = true;
+  cloudSync();
+  setInterval(cloudPoll, 20000);
+  window.addEventListener('focus', cloudPoll);
+}
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); tryCloseModal(true); } });
-window.__atlas = {parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
+window.__atlas = {AUTH, authNeeded, gateRender, fbKey, authSignIn, parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
 </script>
 </body>
 </html>
