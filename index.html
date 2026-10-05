@@ -844,7 +844,7 @@ async function writeDataFile() {
 /* ===================================================================== הזדהות (Firebase Auth דרך REST)
    רק כתובות שברשימת המורשים ושיש להן משתמש בפרויקט יכולות להיכנס.
    האסימון נשמר ומתחדש לבד; מה שחוסם בפועל הם כללי האבטחה במסד. */
-const FB_API_KEY_DEFAULT = '';            /* ← מפתח ה-Web API של פרויקט atlas-mod */
+const FB_API_KEY_DEFAULT = 'AIzaSyAHhNAU8reXQi2gSksBSRmj-mzpc64kwk4';            /* ← מפתח ה-Web API של פרויקט atlas-mod */
 const AUTH_ALLOW = ['denis@atlas-bd.co.il', 'bari@atlas-bd.co.il'];
 const AUTH = {idToken: '', refreshToken: '', email: '', expAt: 0, skip: false, busy: false, err: '', slow: false, ready: false};
 function fbKey() { let k = ''; try { k = localStorage.getItem('atlasmod.key') || ''; } catch (e) {} return (k || FB_API_KEY_DEFAULT).trim(); }
