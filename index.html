@@ -12,6 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <style>
   :root{
     --ink:#1c2b2a; --paper:#eef2f0; --paper-2:#ffffff; --line:#d6ddd9; --head:#f7f9f8;
@@ -148,6 +150,7 @@
   .ordT .ubar i{display:block;height:100%} .ordT .ubar i.ok{background:#15803d} .ordT .ubar i.mid{background:#c9a227} .ordT .ubar i.bad{background:#b42318}
   .ordT td.remLow{color:#b8860b;font-weight:700} .ordT td.daysBad{background:#c62828;color:#fff;font-weight:700} .ordT td.daysOut{color:var(--muted);text-decoration:line-through}
   .ordT tfoot td{background:var(--paper-2);border-top:2px solid var(--ink)}
+  .googleBtn{display:inline-flex;align-items:center;gap:10px;padding:10px 18px;font-size:15px}
   .rptBar{display:flex;justify-content:flex-end;margin:0 0 6px}
   .rptTree{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
   .rptProj{padding:4px 0;border-bottom:1px dashed var(--line)} .rptProj:last-child{border:none} .rptEngs{padding-inline-start:22px;display:flex;flex-direction:column}
@@ -824,84 +827,143 @@ async function writeDataFile() {
 /* ===================================================================== מסד נתונים משותף (Firebase Realtime Database, REST)
    מיזוג לפי רשומה: לכל רשומה updatedAt - הגרסה החדשה יותר נשמרת. מחיקות נרשמות ב-deleted כדי שלא "יחזרו". */
 const FIREBASE_URL_DEFAULT = 'https://atlas-mod-default-rtdb.europe-west1.firebasedatabase.app';
-const FB_NODE = 'atlasMod';
-const LISTS = ['people', 'orders', 'reports', 'projects', 'engagements', 'bills'];
+const FB_NODE = 'atlasMod', FB_SEC = 'atlasModSecure';
+// חלוקת הנתונים: פרויקטים - פתוח לכולם; משהב"ט (עובדים, הזמנות, שיוכים) - רק למשתמשים מורשים אחרי כניסה עם Google
+const OPEN_LISTS = ['projects', 'engagements', 'bills'], SEC_LISTS = ['people', 'orders', 'reports'];
+const LISTS = [...SEC_LISTS, ...OPEN_LISTS];
 function toArr(v) { if (Array.isArray(v)) return v.filter(x => x != null); if (v && typeof v === 'object') return Object.keys(v).sort((a, b) => a - b).map(k => v[k]).filter(x => x != null); return []; }
 function fbUrl() { let u = ''; try { u = localStorage.getItem('atlasmod.fb') || ''; } catch (e) {} return (u || FIREBASE_URL_DEFAULT).trim().replace(/\/+$/, '').replace(/\.json$/, ''); }
-const CLOUD = {state: 'off', lastSync: null, lastRemote: null, etagOk: true, busy: false, pending: false, dirty: false, err: ''};
+const CLOUD = {state: 'off', lastSync: null, lastRemote: null, lastSec: null, secState: 'off', etagOk: true, busy: false, pending: false, dirty: false, err: ''};
 function normRec(r) { for (const k of ['lines', 'milestones', 'extras', 'versions', 'folder', 'periods', 'items']) if (r[k] !== undefined && !Array.isArray(r[k])) r[k] = toArr(r[k]); for (const l of r.lines || []) if (l && typeof l === 'object') normRec(l); return r; }
 function normDb(d) { const x = dbFrom(d || {}); for (const k of LISTS) x[k] = x[k].map(normRec); if (d?.updatedAt) x.updatedAt = d.updatedAt; return x; }
-function mergeDb(local, remote) {
-  const out = dbFrom({}), tomb = {...(remote?.deleted || {}), ...(local?.deleted || {})};
-  for (const k of Object.keys(tomb)) if (remote?.deleted?.[k] && remote.deleted[k] > tomb[k]) tomb[k] = remote.deleted[k];
-  for (const k of LISTS) {
+function mergeTomb(local, remote) { const tomb = {...(remote?.deleted || {}), ...(local?.deleted || {})}; for (const k of Object.keys(tomb)) if (remote?.deleted?.[k] && remote.deleted[k] > tomb[k]) tomb[k] = remote.deleted[k]; return tomb; }
+function mergeLists(local, remote, lists, tomb) {
+  const out = {};
+  for (const k of lists) {
     const m = new Map();
     for (const r of toArr(remote?.[k])) if (r?.id) m.set(r.id, r);
     for (const r of toArr(local?.[k])) if (r?.id) { const o = m.get(r.id); if (!o || (r.updatedAt || '') >= (o.updatedAt || '')) m.set(r.id, r); }
-    out[k] = [...m.values()].filter(r => !(tomb[r.id] && tomb[r.id] >= (r.updatedAt || '')));
+    out[k] = [...m.values()].filter(r => !(tomb[r.id] && tomb[r.id] >= (r.updatedAt || ''))).map(normRec);
   }
-  out.settings = (local?.settings?.updatedAt || '') >= (remote?.settings?.updatedAt || '') ? (local?.settings || {}) : remote.settings;
-  out.deleted = tomb; return normDb(out);
+  return out;
+}
+const newerSettings = (l, r) => (l?.updatedAt || '') >= (r?.updatedAt || '') ? (l || {}) : (r || {});
+function mergeDb(local, remote) {   // מיזוג מלא (כל הרשימות)
+  const tomb = mergeTomb(local, remote); const out = dbFrom({}); Object.assign(out, mergeLists(local, remote, LISTS, tomb));
+  out.settings = newerSettings(local?.settings, remote?.settings); out.deleted = tomb; return normDb(out);
 }
 function removeRecs(list, pred) { const now = new Date().toISOString(); S.db.deleted = S.db.deleted || {}; for (const r of S.db[list].filter(pred)) S.db.deleted[r.id] = now; S.db[list] = S.db[list].filter(r => !pred(r)); }
-const dbSig = d => JSON.stringify(LISTS.map(k => (d[k] || []).map(r => r.id + '|' + (r.updatedAt || '')).sort())) + JSON.stringify(d.settings || {}) + Object.keys(d.deleted || {}).length;
+const partSig = (d, lists, withSettings) => JSON.stringify(lists.map(k => toArr(d?.[k]).map(r => r.id + '|' + (r.updatedAt || '')).sort())) + (withSettings ? JSON.stringify(d?.settings || {}) : '') + Object.keys(d?.deleted || {}).length;
+const dbSig = d => partSig(d, LISTS, true);
+/* ---------- כניסה עם Google (Firebase Authentication) */
+const FB_CONFIG = {apiKey: 'AIzaSyAHhNAU8reXQi2gSksBSRmj-mzpc64kwk4', authDomain: 'atlas-mod.firebaseapp.com', databaseURL: 'https://atlas-mod-default-rtdb.europe-west1.firebasedatabase.app', projectId: 'atlas-mod', appId: '1:415851633425:web:f8f4100455bfd920410ab0'};
+const MOD_USERS = ['denis@atlas-bd.co.il', 'bari@atlas-bd.co.il'];
+const AUTH = {ready: false, user: null, ok: false, err: '', available: false};
+function authInit() {
+  if (!window.firebase?.auth || !FB_CONFIG.apiKey || FB_CONFIG.apiKey.startsWith('__')) { AUTH.ready = true; AUTH.err = 'הכניסה עם Google לא הוגדרה'; return Promise.resolve(); }
+  try { firebase.initializeApp(FB_CONFIG); } catch (e) { if (!/already exists/.test(e.message)) { AUTH.ready = true; AUTH.err = e.message; return Promise.resolve(); } }
+  AUTH.available = true;
+  firebase.auth().getRedirectResult().catch(e => { AUTH.err = authErrText(e); toast(AUTH.err, true); });
+  return new Promise(res => {
+    firebase.auth().onAuthStateChanged(u => {
+      const wasOk = AUTH.ok; AUTH.user = u || null; AUTH.ok = !!u && MOD_USERS.includes(String(u.email || '').toLowerCase());
+      if (!AUTH.ready) { AUTH.ready = true; return res(); }
+      render(); if (AUTH.ok && !wasOk) cloudSync(true);
+    });
+  });
+}
+function authErrText(e) {
+  const c = e?.code || '';
+  if (c === 'auth/unauthorized-domain') return 'הדומיין של האתר לא מורשה ב-Firebase (Authentication ← Settings ← Authorized domains)';
+  if (c === 'auth/operation-not-allowed') return 'הכניסה עם Google לא הופעלה ב-Firebase (Authentication ← Sign-in method ← Google)';
+  if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return 'חלון הכניסה נסגר';
+  return 'הכניסה נכשלה: ' + (e?.message || c);
+}
+async function authToken() { try { return AUTH.user ? await AUTH.user.getIdToken() : null; } catch (e) { return null; } }
+async function signIn() {
+  if (!AUTH.available) return toast(AUTH.err || 'הכניסה עם Google לא זמינה', true);
+  const p = new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({prompt: 'select_account'});
+  try { await firebase.auth().signInWithPopup(p); }
+  catch (e) { if (/popup-blocked|operation-not-supported-in-this-environment/.test(e?.code || '')) return firebase.auth().signInWithRedirect(p); toast(authErrText(e), true); }
+}
+async function signOutUser() {
+  if (!AUTH.available) return;
+  await firebase.auth().signOut();
+  // הנתונים של משהב"ט שמורים בענן - מוחקים את העותק המקומי כדי שלא יישארו גלויים במכשיר
+  let synced = ''; try { synced = localStorage.getItem('atlasmod.secSynced') || ''; } catch (e) {}
+  if (synced) { for (const k of SEC_LISTS) S.db[k] = []; try { localStorage.removeItem('atlasmod.secSynced'); await idb.set('db', S.db); } catch (e) {} }
+  S.personId = null; S.scan = null; S.prep = null; toast('התנתקת'); render();
+}
+/* ---------- REST */
+async function fbFetch(path, opt = {}) {
+  const t = await authToken(); return fetch(`${fbUrl()}/${path}.json${t ? '?auth=' + encodeURIComponent(t) : ''}`, opt);
+}
 async function fbGet(path, etag) {
-  const r = await fetch(`${fbUrl()}/${path}.json`, etag && CLOUD.etagOk ? {headers: {'X-Firebase-ETag': 'true'}} : {});
-  if (!r.ok) throw new Error(`Firebase ${r.status}`);
+  const r = await fbFetch(path, etag && CLOUD.etagOk ? {headers: {'X-Firebase-ETag': 'true'}} : {});
+  if (!r.ok) throw new Error(`Firebase ${r.status}${r.status === 401 || r.status === 403 ? ' - אין הרשאה' : ''}`);
   return {data: await r.json(), etag: r.headers.get('ETag')};
 }
 async function fbPut(path, data, etag) {
   const h = {'Content-Type': 'application/json'}; if (etag && CLOUD.etagOk) h['if-match'] = etag;
-  const r = await fetch(`${fbUrl()}/${path}.json`, {method: 'PUT', headers: h, body: JSON.stringify(data)});
+  const r = await fbFetch(path, {method: 'PUT', headers: h, body: JSON.stringify(data)});
   if (r.status === 412) return {conflict: true};
   if (!r.ok) throw new Error(`Firebase ${r.status}${r.status === 401 || r.status === 403 ? ' - אין הרשאה (בדוק את כללי האבטחה במסד הנתונים)' : ''}`);
   return {ok: true};
 }
+async function fbGetE(path) { try { return await fbGet(path, true); } catch (e) { if (CLOUD.etagOk && e instanceof TypeError) { CLOUD.etagOk = false; return fbGet(path, false); } throw e; } }
+async function fbPutE(path, data, etag) { try { return await fbPut(path, data, etag); } catch (e) { if (CLOUD.etagOk && e instanceof TypeError) { CLOUD.etagOk = false; return fbPut(path, data, null); } throw e; } }
 function cloudChip() {
   if (!fbUrl()) return '';
   const t = CLOUD.lastSync ? new Date(CLOUD.lastSync).toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'}) : '';
-  if (CLOUD.state === 'ok') return `<button class="chip good" onclick="cloudSync(true)" title="לחץ לסנכרון עכשיו">☁ מסונכרן ${t}</button>`;
-  if (CLOUD.state === 'sync') return `<span class="chip">☁ מסנכרן…</span>`;
-  return `<button class="chip bad" onclick="cloudSync(true)" title="${esc(CLOUD.err)}">☁ לא מסונכרן - לחץ לנסות שוב</button>`;
+  const who = AUTH.ok ? `<button class="chip good" onclick="if(confirm('להתנתק מ-${esc(AUTH.user.email)}?'))signOutUser()" title="לחץ להתנתקות">👤 ${esc(AUTH.user.email.split('@')[0])}</button>` : '';
+  if (CLOUD.state === 'ok') return who + `<button class="chip good" onclick="cloudSync(true)" title="לחץ לסנכרון עכשיו">☁ מסונכרן ${t}</button>`;
+  if (CLOUD.state === 'sync') return who + `<span class="chip">☁ מסנכרן…</span>`;
+  return who + `<button class="chip bad" onclick="cloudSync(true)" title="${esc(CLOUD.err)}">☁ לא מסונכרן - לחץ לנסות שוב</button>`;
 }
 let cloudTimer = null;
 function cloudSchedule() { if (!fbUrl()) return; CLOUD.dirty = true; clearTimeout(cloudTimer); cloudTimer = setTimeout(() => cloudSync(), 700); }
-/* סנכרון: קורא מהענן, ממזג עם השינויים המקומיים, וכותב בחזרה (עם ETag - אם מישהו כתב בינתיים, מנסה שוב) */
+/* סנכרון חלק אחד של המסד: קורא, ממזג עם השינויים המקומיים, וכותב בחזרה (עם ETag - אם מישהו כתב בינתיים, מנסה שוב).
+   keep: שדות שיש בצד המרוחק ולא שייכים לחלק הזה - נשמרים כמו שהם (לא נמחקים) */
+async function syncPart(node, lists, withSettings, keep) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const got = await fbGetE(node); const raw = got.data && typeof got.data === 'object' ? got.data : null;
+    const remote = raw ? normDb(raw) : null, tomb = mergeTomb(S.db, remote);
+    const merged = {...mergeLists(S.db, remote, lists, tomb), deleted: tomb}; if (withSettings) merged.settings = newerSettings(S.db.settings, remote?.settings);
+    const payload = {...merged}; let foreignDrop = false;
+    if (raw) for (const k of Object.keys(raw)) if (![...lists, 'deleted', 'settings', 'updatedAt'].includes(k)) { if (keep?.includes(k)) payload[k] = raw[k]; else foreignDrop = true; }
+    const need = CLOUD.dirty || !raw || foreignDrop || partSig(merged, lists, withSettings) !== partSig(remote, lists, withSettings);
+    let stamp = raw?.updatedAt || null;
+    if (need) { stamp = payload.updatedAt = new Date().toISOString(); const res = await fbPutE(node, payload, got.etag); if (res.conflict) continue; }
+    const before = partSig(S.db, lists, withSettings);
+    for (const k of lists) S.db[k] = merged[k]; if (withSettings) S.db.settings = merged.settings; S.db.deleted = {...(S.db.deleted || {}), ...tomb};
+    return {stamp, changed: partSig(S.db, lists, withSettings) !== before, raw};
+  }
+  throw new Error('המסד עודכן במקביל מספר פעמים - נסה שוב');
+}
 async function cloudSync(manual) {
   if (!fbUrl()) return;
   if (CLOUD.busy) { CLOUD.pending = true; return; }
   CLOUD.busy = true; CLOUD.state = 'sync'; renderChips();
   try {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      let got;
-      try { got = await fbGet(FB_NODE, true); }
-      catch (e) { if (CLOUD.etagOk && e instanceof TypeError) { CLOUD.etagOk = false; got = await fbGet(FB_NODE, false); } else throw e; }
-      const remote = got.data ? normDb(got.data) : null;
-      const before = dbSig(S.db);
-      const merged = remote ? mergeDb(S.db, remote) : normDb(S.db);
-      const needPush = CLOUD.dirty || !remote || dbSig(merged) !== dbSig(remote);
-      if (needPush) {
-        merged.updatedAt = new Date().toISOString();
-        let res;
-        try { res = await fbPut(FB_NODE, merged, got.etag); }
-        catch (e) { if (CLOUD.etagOk && e instanceof TypeError) { CLOUD.etagOk = false; res = await fbPut(FB_NODE, merged, null); } else throw e; }
-        if (res.conflict) continue;
-      }
-      CLOUD.dirty = false;
-      S.db = merged; await idb.set('db', S.db);
-      CLOUD.lastRemote = merged.updatedAt || remote?.updatedAt || null; CLOUD.lastSync = Date.now(); CLOUD.state = 'ok'; CLOUD.err = '';
-      if (dbSig(merged) !== before) cloudRerender();
-      pushLocalBlobs();
-      if (manual) toast('☁ הנתונים סונכרנו');
-      break;
+    let changed = false, secOk = false;
+    if (AUTH.ok) {
+      // העברה חד-פעמית: נתוני משהב"ט שעדיין יושבים בחלק הפתוח עוברים לחלק המוגן (ונמחקים מהפתוח רק אחרי שנשמרו)
+      try { const {data} = await fbGet(FB_NODE); if (data && SEC_LISTS.some(k => toArr(data[k]).length)) { const nd = normDb(data); const m = mergeLists(S.db, nd, SEC_LISTS, mergeTomb(S.db, nd)); for (const k of SEC_LISTS) S.db[k] = m[k]; CLOUD.dirty = true; } } catch (e) {}
+      const s = await syncPart(FB_SEC, SEC_LISTS, false, null); secOk = true; changed = changed || s.changed; CLOUD.lastSec = s.stamp; try { localStorage.setItem('atlasmod.secSynced', new Date().toISOString()); } catch (e) {} CLOUD.secState = 'ok';
     }
+    const o = await syncPart(FB_NODE, OPEN_LISTS, true, secOk ? null : SEC_LISTS); changed = changed || o.changed;
+    CLOUD.dirty = false; await idb.set('db', S.db);
+    CLOUD.lastRemote = o.stamp; CLOUD.lastSync = Date.now(); CLOUD.state = 'ok'; CLOUD.err = '';
+    if (changed) cloudRerender();
+    if (AUTH.ok) pushLocalBlobs();
+    if (manual) toast('☁ הנתונים סונכרנו');
   } catch (e) { CLOUD.state = 'err'; CLOUD.err = e.message; console.warn('cloud', e); if (manual) toast('סנכרון נכשל: ' + e.message, true); }
   finally { CLOUD.busy = false; renderChips(); if (CLOUD.pending) { CLOUD.pending = false; setTimeout(() => cloudSync(), 200); } }
 }
 /* תבניות שנשמרו רק בדפדפן הזה (למשל מגרסה קודמת של האתר) - מעלים לענן פעם אחת */
 let blobsPushed = false;
 async function pushLocalBlobs() {
-  if (blobsPushed || !fbUrl()) return; blobsPushed = true;
+  if (blobsPushed || !fbUrl() || !AUTH.ok) return; blobsPushed = true;
   const keys = [...S.db.orders.filter(o => o.templateName).map(o => 'tpl:' + o.id), ...S.db.people.filter(p => p.reportTemplateName).map(p => 'rtpl:' + p.id)];
   let n = 0;
   for (const k of keys) {
@@ -914,7 +976,11 @@ async function pushLocalBlobs() {
 /* בדיקה תקופתית: אם מישהו אחר עדכן - מושכים וממזגים */
 async function cloudPoll() {
   if (!fbUrl() || CLOUD.busy || document.hidden) return;
-  try { const {data} = await fbGet(FB_NODE + '/updatedAt'); if (data && data !== CLOUD.lastRemote) await cloudSync(); else if (CLOUD.state === 'err') await cloudSync(); } catch (e) { CLOUD.state = 'err'; CLOUD.err = e.message; renderChips(); }
+  try {
+    if (CLOUD.state === 'err') return await cloudSync();
+    const {data} = await fbGet(FB_NODE + '/updatedAt'); if (data && data !== CLOUD.lastRemote) return await cloudSync();
+    if (AUTH.ok) { const s = await fbGet(FB_SEC + '/updatedAt'); if (s.data && s.data !== CLOUD.lastSec) return await cloudSync(); }
+  } catch (e) { CLOUD.state = 'err'; CLOUD.err = e.message; renderChips(); }
 }
 let rerenderPending = false;
 function cloudRerender() { if ($('#modalRoot').innerHTML) { rerenderPending = true; return; } S.scan = S.scan && null; render(); toast('☁ התקבלו עדכונים מהמסד המשותף'); }
@@ -929,7 +995,7 @@ function cloudCard() {
     <p class="small">כשמוגדרת כתובת, כל הנתונים (עובדים, הזמנות, שיוכים, פרויקטים, מתכננים, חשבונות) ותבניות ה-Excel נשמרים במסד המשותף, וכל מי שפותח את האתר רואה את אותם נתונים. עדכונים של השותף מגיעים אוטומטית תוך כחצי דקה.</p>
     <div class="row"><input id="fbUrlIn" class="num grow" dir="ltr" value="${esc(fbUrl())}" placeholder="https://xxxx-default-rtdb.europe-west1.firebasedatabase.app/"><button onclick="saveFbUrl()">שמור וחבר</button><button class="small" onclick="cloudSync(true)">סנכרן עכשיו</button></div>
     <div class="small" style="margin-top:6px">מצב: ${!fbUrl() ? 'לא מוגדר - הנתונים נשמרים רק במחשב הזה' : CLOUD.state === 'ok' ? `<span style="color:var(--good)">✓ מחובר ומסונכרן</span>` : CLOUD.state === 'err' ? `<span style="color:var(--bad)">✗ ${esc(CLOUD.err)}</span>` : 'מתחבר…'}${FIREBASE_URL_DEFAULT ? ' · כתובת ברירת המחדל מוגדרת באתר' : ''}</div>
-    <p class="small muted">⚠ המסד פתוח ללא סיסמה: כל מי שיודע את הכתובת שלו יכול לקרוא ולשנות את הנתונים.</p></div>`;
+    <p class="small muted">🔒 נתוני הפרויקטים פתוחים לכל מי שנכנס לאתר. נתוני משהב״ט ותבניות ה-Excel שמורים בחלק מוגן ונפתחים רק אחרי כניסה עם Google של המשתמשים המורשים.</p></div>`;
 }
 async function saveFbUrl() {
   const u = $('#fbUrlIn').value.trim(); if (u && !/^https:\/\/.+(firebaseio\.com|firebasedatabase\.app)/.test(u)) return toast('כתובת Firebase לא תקינה', true);
@@ -1180,45 +1246,23 @@ function renderChips() {
   if (!S.idbOk) h += `<span class="chip bad">הדפדפן חוסם שמירה מקומית</span>`;
   $('#statusChips').innerHTML = h;
 }
-/* ---------- נעילת "הגשת חשבונות משהב"ט" בקוד (נשמר כ-hash, משותף לכל המשתמשים דרך המסד) */
-async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
-function unlockedHash() { try { return sessionStorage.getItem('atlasmod.unlock') || localStorage.getItem('atlasmod.unlock') || ''; } catch (e) { return ''; } }
-function modLocked() { const L = S.db.settings?.modLock; return !!(L?.hash) && unlockedHash() !== L.hash; }
+/* ---------- גישה להגשת חשבונות משהב"ט: כניסה עם Google, רק למשתמשים מורשים (ההגנה עצמה - בכללי האבטחה של המסד) */
+function modLocked() { return !AUTH.ok; }
 function lockScreen() {
-  return `<div class="card" style="max-width:420px;margin:30px auto;text-align:center"><div style="font-size:34px">🔒</div><h2>הגשת חשבונות משהב״ט נעולה</h2>
-    <p class="small muted">הזן את הקוד כדי להיכנס. חשבונות המתכננים בפרויקטים פתוחים ללא קוד.</p>
-    <input id="lockIn" type="password" inputmode="numeric" autocomplete="off" class="num" style="text-align:center;font-size:20px;letter-spacing:4px;width:200px" onkeydown="if(event.key==='Enter')tryUnlock()">
-    <div style="margin:10px 0"><label class="small"><input type="checkbox" id="lockRemember"> זכור אותי במכשיר הזה</label></div>
-    <button class="primary" onclick="tryUnlock()">כניסה</button> <button class="ghost" onclick="setModule('proj')">לחשבונות הפרויקטים</button></div>`;
+  const g = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.3 5.7c4.3-3.9 7-9.8 7-17.1z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C.9 16.6 0 20.2 0 24s.9 7.4 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2 1.4-4.7 2.3-8.6 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>`;
+  const body = !AUTH.ready ? '<p class="muted">בודק הרשאה…</p>'
+    : !AUTH.available ? `<p class="small" style="color:var(--bad)">${esc(AUTH.err || 'הכניסה עם Google לא זמינה')}</p>`
+    : AUTH.user && !AUTH.ok ? `<p>החשבון <b dir="ltr">${esc(AUTH.user.email)}</b> אינו מורשה להיכנס לחלק הזה.</p><button class="primary" onclick="signOutUser().then(signIn)">התחבר עם חשבון אחר</button>`
+    : `<button class="primary googleBtn" onclick="signIn()">${g}<span>התחבר עם Google</span></button>`;
+  return `<div class="card" style="max-width:440px;margin:30px auto;text-align:center"><div style="font-size:34px">🔒</div><h2>הגשת חשבונות משהב״ט</h2>
+    <p class="small muted">החלק הזה פתוח רק לדניס ולברי, אחרי כניסה עם חשבון Google של אטלס. חשבונות המתכננים בפרויקטים פתוחים לכולם ללא כניסה.</p>
+    ${body}<div style="margin-top:12px"><button class="ghost" onclick="setModule('proj')">לחשבונות הפרויקטים ←</button></div></div>`;
 }
-async function tryUnlock() {
-  const L = S.db.settings?.modLock; const code = $('#lockIn').value.trim(); if (!code) return;
-  const h = await sha256(L.salt + code);
-  if (h !== L.hash) { toast('קוד שגוי', true); $('#lockIn').value = ''; $('#lockIn').focus(); return; }
-  try { sessionStorage.setItem('atlasmod.unlock', h); if ($('#lockRemember').checked) localStorage.setItem('atlasmod.unlock', h); } catch (e) {}
-  render();
-}
-function lockNow() { try { sessionStorage.removeItem('atlasmod.unlock'); localStorage.removeItem('atlasmod.unlock'); } catch (e) {} render(); }
-async function setModLock() {
-  const a = $('#lockNew').value.trim(), b = $('#lockNew2').value.trim();
-  if (a.length < 4) return toast('הקוד צריך להיות לפחות 4 תווים', true);
-  if (a !== b) return toast('הקודים אינם זהים', true);
-  const salt = Math.random().toString(36).slice(2, 12), hash = await sha256(salt + a);
-  S.db.settings = {...(S.db.settings || {}), modLock: {hash, salt, setAt: new Date().toISOString()}, updatedAt: new Date().toISOString()};
-  try { sessionStorage.setItem('atlasmod.unlock', hash); } catch (e) {}
-  await saveDb(); toast('🔒 הקוד נשמר - הגשת החשבונות נעולה בכל המכשירים'); render();
-}
-async function removeModLock() {
-  if (!confirmDelete('להסיר את הנעילה? כל מי שפותח את האתר יוכל להיכנס להגשת החשבונות.')) return;
-  const st = {...(S.db.settings || {})}; delete st.modLock; st.updatedAt = new Date().toISOString(); S.db.settings = st; await saveDb(); toast('הנעילה הוסרה'); render();
-}
+function lockNow() { if (confirm('להתנתק? הנתונים של משהב״ט יוסרו מהמכשיר הזה (הם שמורים במסד) ויחזרו בכניסה הבאה.')) signOutUser(); }
 function lockCard() {
-  const on = !!S.db.settings?.modLock?.hash;
-  return `<div class="card"><h2>🔒 נעילת הגשת חשבונות משהב״ט</h2>
-    <p class="small">${on ? '<span style="color:var(--good)">✓ הנעילה פעילה.</span> כל מי שנכנס לחלק הזה (בכל מכשיר) צריך להזין קוד. חשבונות המתכננים בפרויקטים נשארים פתוחים.' : 'כרגע אין נעילה - כל מי שפותח את האתר יכול להיכנס.'}</p>
-    <div class="row"><input id="lockNew" type="password" placeholder="${on ? 'קוד חדש' : 'קוד'}" autocomplete="new-password" style="width:150px"><input id="lockNew2" type="password" placeholder="שוב, לאימות" autocomplete="new-password" style="width:150px">
-      <button class="primary" onclick="setModLock()">${on ? 'החלף קוד' : 'הפעל נעילה'}</button>${on ? '<button class="danger" onclick="removeModLock()">הסר נעילה</button>' : ''}</div>
-    <p class="small muted">הקוד נשמר מוצפן (hash) ולא ניתן לשחזר אותו - אם שכחת, אפשר להחליף אותו מכאן כשאתה מחובר. זו נעילה של האתר ולא של מסד הנתונים עצמו.</p></div>`;
+  return `<div class="card"><h2>🔒 גישה להגשת חשבונות משהב״ט</h2>
+    <p class="small">מחובר כ-<b dir="ltr">${esc(AUTH.user?.email || '')}</b>. החלק הזה (עובדים, הזמנות, שיוכים ותבניות) שמור במסד בחלק מוגן, ונפתח רק ל: <span dir="ltr">${MOD_USERS.join(', ')}</span>. חשבונות המתכננים בפרויקטים פתוחים לכולם.</p>
+    <div class="row"><button onclick="lockNow()">התנתק</button></div></div>`;
 }
 function setModule(m) { S.module = m; remember(); render(); }
 function render() {
@@ -1226,8 +1270,8 @@ function render() {
   const nAl = projAlerts().filter(a => a.level !== 'info').length;
   const modSwitch = `<div class="modSwitch"><button class="${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">${modLocked() ? '🔒 ' : ''}הגשת חשבונות משהב״ט</button><button class="${S.module === 'proj' ? 'on' : ''}" onclick="setModule('proj')">חשבונות מתכננים בפרויקטים${nAl ? ` <span class="badge">${nAl}</span>` : ''}</button></div>`;
   if (S.module === 'proj') { $('#tabs').innerHTML = modSwitch + PTABS.map(([k, t]) => tabBtn(k, t, S.ptab === k, `S.ptab='${k}';remember();render()`)).join(''); return renderProj($('#view')); }
-  if (modLocked()) { $('#tabs').innerHTML = modSwitch; $('#view').innerHTML = lockScreen(); setTimeout(() => $('#lockIn')?.focus(), 50); return; }
-  $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => tabBtn(k, t, S.tab === k, `S.tab='${k}';remember();render()`)).join('') + (S.db.settings?.modLock?.hash ? `<button class="tabBtn lockBtn" title="נעל את הגשת החשבונות" onclick="lockNow()">${ico('lock')}<span>נעל</span></button>` : '');
+  if (modLocked()) { $('#tabs').innerHTML = modSwitch; $('#view').innerHTML = lockScreen(); return; }
+  $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => tabBtn(k, t, S.tab === k, `S.tab='${k}';remember();render()`)).join('') + `<button class="tabBtn lockBtn" title="התנתק (${esc(AUTH.user?.email || '')})" onclick="lockNow()">${ico('lock')}<span>התנתק</span></button>`;
   if (!fsSupported() && !['people', 'orders', 'tools'].includes(S.tab)) { $('#view').innerHTML = `<div class="card"><h2>📱 הגשת חשבונות משהב״ט - מהמחשב בלבד</h2><p>החלק הזה קורא ושומר קבצים בתיקיות העובדים (דוחות שעות, חשבונות Excel ו-PDF), ולכן עובד רק במחשב בדפדפן Chrome או Edge.</p><p>בנייד אפשר לצפות ב<b>עובדים</b> וב<b>הזמנות</b>, ולעבוד באופן מלא על <b>חשבונות מתכננים בפרויקטים</b>.</p><button class="primary" onclick="setModule('proj')">מעבר לחשבונות מתכננים בפרויקטים</button></div>`; return; }
   const v = $('#view');
   if (fsSupported() && (!S.root || S.rootPerm !== 'granted') && !['people', 'orders', 'tools'].includes(S.tab)) {
@@ -1919,7 +1963,9 @@ function viewTools(v) {
     <div class="row"><button onclick="exportBackup()">⬇ הורד גיבוי</button><button onclick="pickFile('.json', restoreBackup)">⬆ שחזור מגיבוי</button></div>
     <h3>גרסה</h3><div class="small">ATLAS MOD ${APP_VERSION} · גרסת דפדפן</div></div></div>`;
 }
-function exportBackup() { download(JSON.stringify({schema: 'atlas-mod', version: 1, exportedAt: new Date().toISOString(), ...S.db}, null, 1), `atlas-mod-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json'); }
+function exportBackup() {
+  const d = {...S.db}; if (!AUTH.ok) for (const k of SEC_LISTS) d[k] = [];   // בלי כניסה - גיבוי של הפרויקטים בלבד
+  download(JSON.stringify({schema: 'atlas-mod', version: 1, exportedAt: new Date().toISOString(), scope: AUTH.ok ? 'full' : 'projects', ...d}, null, 1), `atlas-mod-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json'); }
 async function restoreBackup(f) {
   let d; try { d = JSON.parse(await f.text()); } catch (e) { return toast('קובץ לא תקין', true); }
   if (d.schema !== 'atlas-mod') return toast('קובץ הגיבוי אינו של ATLAS MOD', true);
@@ -2256,7 +2302,8 @@ function viewPSettings(v) {
       ${fld('taxInvoiceDays', 'התראה: חשבונית מס שלא התקבלה אחרי התשלום (ימים)', st.taxInvoiceDays, {num: true})}</div>
     <p class="small muted">מועד התשלום מחושב לכל מתכנן לפי תנאי התשלום בהצעה שלו (למשל "שוטף + 30" = סוף החודש של חשבונית העסקה + 30 יום), מתאריך חשבונית העסקה.</p>
     <button class="primary" onclick="savePSettings()">שמור</button></div>${cloudCard()}
-    <div class="card"><h2>איך מקבלים את ההתראות</h2><p class="small">ההתראות מופיעות בלוח הבקרה ובמספר האדום על כפתור "חשבונות מתכננים בפרויקטים". הן מחושבות מחדש בכל פתיחה של האתר לפי התאריך של היום.</p></div>`;
+    <div class="card"><h2>איך מקבלים את ההתראות</h2><p class="small">ההתראות מופיעות בלוח הבקרה ובמספר האדום על כפתור "חשבונות מתכננים בפרויקטים". הן מחושבות מחדש בכל פתיחה של האתר לפי התאריך של היום.</p></div>
+    <div class="card" style="margin-top:12px"><h2>⬇ גיבוי</h2><p class="small">מוריד קובץ גיבוי של ${AUTH.ok ? 'כל הנתונים (כולל משהב״ט)' : 'נתוני הפרויקטים, המתכננים והחשבונות'} כפי שהם שמורים בדפדפן הזה.</p><button onclick="exportBackup()">⬇ הורד גיבוי</button></div>`;
 }
 async function savePSettings() { const x = formVals($('#psf')); S.db.settings = {...(S.db.settings || {}), alerts: {...psettings(), ...x}, updatedAt: new Date().toISOString()}; await saveDb(); toast('נשמר'); render(); }
 /* --------------------------------------------------------------- forms */
@@ -2629,11 +2676,12 @@ function rptPrint() {
   if (!window.XLSX || !window.JSZip || !window.PDFLib) toast('חלק מהרכיבים לא נטענו - בדוק חיבור לאינטרנט ורענן את הדף.', true);
   if (S.personId && !personById(S.personId)) S.personId = null;
   render();
+  await authInit(); render();
   if (fbUrl()) { await cloudSync(); setInterval(cloudPoll, 20000); window.addEventListener('focus', cloudPoll); }
   else setInterval(() => { if (fbUrl()) cloudPoll(); }, 20000);
 })();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); tryCloseModal(true); } });
-window.__atlas = {parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
+window.__atlas = {saveDb, download, parseQuotePdf, projAlerts, dueDate, engStats, S, parse23031, readInvoice, writeInvoice, planNextInvoice, parseOrderPdf, mergeInvoiceAndReport, idb, render, checkPerm, maybeLoadDataFile};
 </script>
 </body>
 </html>
