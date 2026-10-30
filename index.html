@@ -146,10 +146,28 @@
   .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
   @media (max-width:800px){ .grid2{grid-template-columns:1fr;} main{padding:12px;} header.top{padding:12px;} nav.tabs{padding:10px 12px 0;} }
 .aQty.manual{border-color:#b8860b;background:#fff8e1} .kmConf{margin-top:4px;display:flex;flex-direction:column;gap:3px;align-items:flex-start;color:#b8860b;font-size:12px} .kmConf button{min-height:26px}
+  .modHero{display:grid;grid-template-columns:3fr 1fr;gap:10px;flex:1 1 100%;margin-bottom:4px}
+  .modHero .mh{position:relative;border-radius:14px;text-align:right;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 14px;border:1.5px solid var(--line);background:#fff;color:var(--ink);font-weight:700;cursor:pointer}
+  .modHero .mh.proj{background:linear-gradient(135deg,#3d6b5c,#1c2b2a);color:#fff;border-color:transparent;flex-direction:row;align-items:center;gap:16px;flex-wrap:wrap}
+  .modHero .mh.proj:not(.on){opacity:.78} .modHero .mh.mod{justify-content:center;font-size:14px} .modHero .mh.mod.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+  .modHero .mhT{font-size:17px;display:inline-flex;align-items:center;gap:6px} .modHero .mhT .ico{color:#fff} .modHero .mhS{font-size:12px;font-weight:400;opacity:.85}
+  .modHero .mhK{display:flex;gap:8px;margin-inline-start:auto} .modHero .mhK .k{background:rgba(255,255,255,.14);border-radius:10px;padding:5px 10px;display:flex;flex-direction:column;font-weight:400}
+  .modHero .mhK small{font-size:11px;opacity:.85} .modHero .mhK b{font-size:15px}
+  .modHero .badge{position:absolute;left:10px;top:-8px}
+  .modHero.big .mh.proj{padding:16px 18px;min-height:86px} .modHero.big .mhT{font-size:21px}
+  .seg3{display:flex;gap:6px;margin-top:12px} .seg3 button{flex:1;border-radius:10px;padding:9px 6px;background:#fff;border:1px solid var(--line);font-weight:600} .seg3 button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .otiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px} .ot{border-radius:12px;padding:12px;color:#fff;text-decoration:none;display:flex;flex-direction:column;gap:2px}
+  .ot.late{background:#c62828} .ot.tr{background:#1d4ed8} .ot b{font-size:20px} .ot span{font-size:12px;opacity:.92}
+  .obr{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--paper);cursor:pointer} .obr:last-child{border:none} .obr:hover{background:var(--head)} .obrR{text-align:left;white-space:nowrap}
+  .red{color:#c62828} .blue{color:#1d4ed8}
+  .chips2{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap} .chips2 button{border-radius:999px;padding:4px 12px;font-size:13px;background:#fff;border:1px solid var(--line);min-height:30px} .chips2 button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .erow{display:grid;grid-template-columns:1fr auto 120px;gap:12px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--paper);cursor:pointer} .erow:hover{background:var(--head)} .erow.sel{background:var(--good-bg)}
+  .erow .eM{text-align:left} .erow .eR{text-align:left} .erow .bar{width:100%;margin-top:3px} .etot{padding:8px 4px 0;border-top:2px solid var(--ink);margin-top:4px}
   .ordT thead th{background:#e8ecf7;color:#1c2b2a} .ordT td{vertical-align:middle} .ordT .ubar{height:4px;background:#e5e7eb;border-radius:3px;margin-top:4px;overflow:hidden;min-width:120px}
   .ordT .ubar i{display:block;height:100%} .ordT .ubar i.ok{background:#15803d} .ordT .ubar i.mid{background:#c9a227} .ordT .ubar i.bad{background:#b42318}
   .ordT td.remLow{color:#b8860b;font-weight:700} .ordT td.daysBad{background:#c62828;color:#fff;font-weight:700} .ordT td.daysOut{color:var(--muted);text-decoration:line-through}
   .ordT tfoot td{background:var(--paper-2);border-top:2px solid var(--ink)}
+  nav.tabs button.tabBtn .ts{display:none}
   .googleBtn{display:inline-flex;align-items:center;gap:10px;padding:10px 18px;font-size:15px}
   .rptBar{display:flex;justify-content:flex-end;margin:0 0 6px}
   .rptTree{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
@@ -162,8 +180,12 @@
     .chips{gap:4px;} .chip{font-size:11px;padding:2px 8px;}
     nav.tabs{flex-wrap:wrap;padding:8px 10px 2px;gap:6px;}
     nav.tabs button{white-space:nowrap;padding:8px 12px;}
-    nav.tabs button.tabBtn{flex:1 1 auto;justify-content:center;padding:8px 10px;gap:5px;}
-    nav.tabs button.dashTab{flex-basis:100%;padding:10px;font-size:14px;}
+    nav.tabs{flex-wrap:wrap;gap:5px}
+    nav.tabs button.tabBtn{flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;padding:6px 2px;gap:2px;font-size:11px;border-radius:12px;position:relative;min-height:50px}
+    nav.tabs button.tabBtn .tl{display:none} nav.tabs button.tabBtn .ts{display:block;white-space:nowrap}
+    nav.tabs button.dashTab{flex-basis:0;padding:6px 2px;font-size:11px}
+    nav.tabs button.tabBtn .badge{position:absolute;top:-6px;left:4px;font-size:10px;padding:1px 6px}
+    .rptBar{display:none}
     .modSwitch{flex:1 1 100%;margin:0 0 2px;} .modSwitch button{flex:1;white-space:nowrap;padding:8px 6px;font-size:12px;}
     main{padding:10px;}
     .card{padding:12px;}
@@ -171,6 +193,11 @@
     button{min-height:38px;} button.small{min-height:32px;}
     input,select{font-size:16px;min-height:38px;}
     .row{gap:8px;}
+    .modHero.big{grid-template-columns:1fr} .modHero .mh.proj{flex-direction:column;align-items:flex-start;gap:4px} .modHero .mhK{margin:6px 0 0;width:100%} .modHero .mhK .k{flex:1}
+    .modHero:not(.big){grid-template-columns:1.4fr 1fr} .modHero:not(.big) .mhK, .modHero:not(.big) .mhS{display:none} .modHero:not(.big) .mh{padding:8px 10px;font-size:12px;justify-content:center} .modHero:not(.big) .mhT{font-size:14px}
+    .modHero .mh.mod{padding:9px 12px}
+    .erow{grid-template-columns:1fr 92px} .erow .eM{display:none}
+    .seg3 button{font-size:12px;padding:9px 3px}
     .pgrid{grid-template-columns:1fr;}
     details.fold > summary{padding:12px;} details.fold > .foldBody{padding:0 10px 12px;}
     .modalBg{padding:0;align-items:stretch;} .modal{border-radius:0;min-height:100vh;padding:14px 12px 90px;max-width:none;}
@@ -793,7 +820,7 @@ const idb = {
 
 /* ===================================================================== state */
 const S = {module: 'mod', tab: 'report', ptab: 'pdash', projectId: null, engId: null, month: null, personId: null, db: {people: [], orders: [], reports: [], projects: [], engagements: [], bills: [], settings: {}}, root: null, rootPerm: 'none', scan: null, prep: null, idbOk: true};
-try { const s = JSON.parse(localStorage.getItem('atlasmod.ui') || '{}'); Object.assign(S, {module: s.module || (!('showDirectoryPicker' in window) ? 'proj' : 'mod'), tab: s.tab || 'report', ptab: s.ptab || 'pdash', projectId: s.projectId || null, engId: s.engId || null, month: s.month || null, personId: s.personId || null}); } catch (e) {}
+try { const s = JSON.parse(localStorage.getItem('atlasmod.ui') || '{}'); Object.assign(S, {module: 'proj', tab: s.tab || 'report', ptab: s.ptab || 'pdash', projectId: s.projectId || null, engId: s.engId || null, month: s.month || null, personId: s.personId || null}); } catch (e) {}
 if (!S.month) { const d = new Date(); d.setMonth(d.getMonth() - 1); S.month = d.toISOString().slice(0, 7); }
 function remember() { try { localStorage.setItem('atlasmod.ui', JSON.stringify({module: S.module, tab: S.tab, ptab: S.ptab, projectId: S.projectId, engId: S.engId, month: S.month, personId: S.personId})); } catch (e) {} }
 const people = () => S.db.people.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he'));
@@ -1264,11 +1291,23 @@ function lockCard() {
     <p class="small">מחובר כ-<b dir="ltr">${esc(AUTH.user?.email || '')}</b>. החלק הזה (עובדים, הזמנות, שיוכים ותבניות) שמור במסד בחלק מוגן, ונפתח רק ל: <span dir="ltr">${MOD_USERS.join(', ')}</span>. חשבונות המתכננים בפרויקטים פתוחים לכולם.</p>
     <div class="row"><button onclick="lockNow()">התנתק</button></div></div>`;
 }
+// מעבר בין החלקים: כרטיס גדול לפרויקטים (עם סכומי האיחור והממתינים), כפתור קטן להגשת חשבונות משהב"ט
+function heroSwitch(nAl) {
+  const all = S.db.bills.map(b => { const e = engById(b.engagementId); return e ? {b, e, ps: payState(b, e), st: billStatus(b), g: billGross(b)} : null; }).filter(Boolean);
+  const late = all.filter(x => x.ps === 'late'), tr = all.filter(x => x.st === 2 && x.ps !== 'late' && x.ps !== 'paid');
+  const sum = l => money(r2(l.reduce((a, x) => a + x.g, 0)));
+  const big = S.module === 'proj' && (S.ptab === 'pdash' || (S.ptab === 'projects' && !S.projectId));
+  return `<div class="modHero ${big ? 'big' : ''}">
+    <button class="mh proj ${S.module === 'proj' ? 'on' : ''}" onclick="S.module='proj';S.ptab='pdash';S.projectId=null;S.engId=null;remember();render()">
+      ${nAl ? `<span class="badge">${nAl}</span>` : ''}<span class="mhT">${ico('folder')} חשבונות פרויקטים</span><span class="mhS">${S.db.projects.length} פרויקטים · ${S.db.engagements.length} מתכננים</span>
+      <span class="mhK"><span class="k"><small>באיחור</small><b>${sum(late)}</b></span><span class="k"><small>הועבר, טרם שולם</small><b>${sum(tr)}</b></span></span></button>
+    <button class="mh mod ${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">${modLocked() ? '🔒' : ico('receipt')} הגשת חשבונות משהב״ט</button></div>`;
+}
 function setModule(m) { S.module = m; remember(); render(); }
 function render() {
   renderChips();
   const nAl = projAlerts().filter(a => a.level !== 'info').length;
-  const modSwitch = `<div class="modSwitch"><button class="${S.module === 'mod' ? 'on' : ''}" onclick="setModule('mod')">${modLocked() ? '🔒 ' : ''}הגשת חשבונות משהב״ט</button><button class="${S.module === 'proj' ? 'on' : ''}" onclick="setModule('proj')">חשבונות מתכננים בפרויקטים${nAl ? ` <span class="badge">${nAl}</span>` : ''}</button></div>`;
+  const modSwitch = heroSwitch(nAl);
   if (S.module === 'proj') { $('#tabs').innerHTML = modSwitch + PTABS.map(([k, t]) => tabBtn(k, t, S.ptab === k, `S.ptab='${k}';remember();render()`)).join(''); return renderProj($('#view')); }
   if (modLocked()) { $('#tabs').innerHTML = modSwitch; $('#view').innerHTML = lockScreen(); return; }
   $('#tabs').innerHTML = modSwitch + TABS.map(([k, t]) => tabBtn(k, t, S.tab === k, `S.tab='${k}';remember();render()`)).join('') + `<button class="tabBtn lockBtn" title="התנתק (${esc(AUTH.user?.email || '')})" onclick="lockNow()">${ico('lock')}<span>התנתק</span></button>`;
@@ -1996,7 +2035,8 @@ const ico = (k, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-h
 const TAB_ICON = {pdash: 'dash', projects: 'folder', pbills: 'receipt', psettings: 'bell', preports: 'report', report: 'clock', produce: 'file', summary: 'chart', people: 'users', orders: 'clip', tools: 'gear'};
 function tabBtn(k, t, active, onclick) {
   const n = k === 'pdash' ? projAlerts().filter(a => a.level !== 'info').length : 0;
-  return `<button class="tabBtn ${k === 'pdash' ? 'dashTab' : ''} ${active ? 'active' : ''}" onclick="${onclick}">${ico(TAB_ICON[k])}<span>${t}</span>${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+  const sh = {pdash: 'בקרה', projects: 'פרויקטים', pbills: 'חשבונות', preports: 'דוחות', psettings: 'הגדרות', people: 'עובדים', orders: 'הזמנות', report: 'דיווח', produce: 'הפקה', summary: 'ריכוז', tools: 'הגדרות'}[k] || t;
+  return `<button class="tabBtn ${k === 'pdash' ? 'dashTab' : ''} ${active ? 'active' : ''}" onclick="${onclick}">${ico(TAB_ICON[k])}<span class="tl">${t}</span><span class="ts">${sh}</span>${n ? `<span class="badge">${n}</span>` : ''}</button>`;
 }
 const PTABS = [['pdash', 'לוח בקרה'], ['projects', 'פרויקטים ומתכננים'], ['pbills', 'כל החשבונות'], ['preports', 'דוחות'], ['psettings', 'הגדרות התראות']];
 const DISCIPLINES = ['אדריכלות', 'קונסטרוקציה', 'חשמל', 'מיזוג אוויר', 'אינסטלציה', 'מודד', 'אלומיניום', 'אקוסטיקה', 'נוף', 'בטיחות', 'תנועה', 'קרקע וביסוס', 'איטום', 'מעליות', 'קרינה', 'תאורה', 'בקרת תכנון', 'ניהול פרויקט', 'אחר'];
@@ -2156,7 +2196,7 @@ function renderProj(v) {
   const pre = {pdash: "'dash'", pbills: "'bills'", projects: S.projectId ? `{project:'${S.projectId}'}` : 'null'}[S.ptab];
   if (pre) v.insertAdjacentHTML('afterbegin', `<div class="rptBar"><button class="small" onclick="openReport(${pre})">${ico('report')} הפק דוח${S.ptab === 'projects' && S.projectId ? ' לפרויקט' : ''}</button></div>`);
 }
-function openBillFromAlert(billId, engId, projectId) { S.ptab = 'projects'; S.projectId = projectId; S.engId = engId; remember(); render(); if (billId) editBill(billId); }
+function openBillFromAlert(billId, engId, projectId) { S.ptab = 'projects'; S.projectId = projectId; S.engId = engId; S.projView = 'engs'; remember(); render(); if (billId) editBill(billId); }
 function alertsTable(list, parked) {
   if (!list.length) return `<div class="empty">${parked ? 'אין התראות שנדחו או סומנו כטופלו' : '✓ אין פריטים שדורשים טיפול'}</div>`;
   return `<div class="tableWrap"><table><tbody>` + list.map(a => { const args = `${a.billId ? `'${a.billId}'` : 'null'},'${a.engId}','${a.kind}'`;
@@ -2227,8 +2267,10 @@ function viewProjects(v) {
   const p = projById(S.projectId);
   if (!p) {
     const cards = S.db.projects.map(x => { const es = engsOf(x.id).map(engStats); const fee = es.reduce((a, s) => a + s.fee, 0), billed = es.reduce((a, s) => a + s.billed, 0), paid = es.reduce((a, s) => a + s.paid, 0);
-      const na = projAlerts().filter(a => a.projectId === x.id && a.level !== 'info').length;
-      return `<div class="pcard" onclick="S.projectId='${x.id}';S.engId=null;remember();render()"><div class="row spread"><b>${esc(x.name)}</b>${na ? `<span class="badge">${na}</span>` : ''}</div>
+      const na = projAlerts().filter(a => a.projectId === x.id && a.level !== 'info').length, pb = projBills(x.id);
+      const nl = pb.filter(y => y.ps === 'late').length, nt = pb.filter(y => y.st === 2 && y.ps !== 'late').length;
+      return `<div class="pcard" onclick="S.projectId='${x.id}';S.engId=null;S.projView='open';remember();render()"><div class="row spread"><b>${esc(x.name)}</b>${na ? `<span class="badge">${na}</span>` : ''}</div>
+        ${nl || nt ? `<div class="small" style="margin-top:2px">${nl ? `<b style="color:#c62828">${nl} באיחור</b>` : ''}${nl && nt ? ' · ' : ''}${nt ? `<b style="color:#1d4ed8">${nt} הועברו, טרם שולמו</b>` : ''}</div>` : ''}
         <div class="small muted">${esc(x.client || '')}</div><div class="small" style="margin-top:6px">${es.length} מתכננים · שכ״ט ${money(r2(fee))}</div>
         <div class="row" style="gap:6px;margin-top:4px"><div class="bar grow"><i style="width:${Math.min(100, fee ? billed / fee * 100 : 0)}%"></i></div><span class="small">${fee ? qty(billed / fee * 100) : 0}% חויב</span></div>
         <div class="small muted">שולם ${money(r2(paid))}</div></div>`; }).join('');
@@ -2236,19 +2278,59 @@ function viewProjects(v) {
       ${cards ? `<div class="pgrid">${cards}</div>` : '<div class="card empty">אין פרויקטים עדיין.</div>'}`;
     return;
   }
-  const es = engsOf(p.id);
-  const rows = es.map(e => { const s2 = engStats(e), na = projAlerts().filter(a => a.engId === e.id && a.level !== 'info').length;
-    return `<tr class="clickable ${S.engId === e.id ? 'dup' : ''}" onclick="S.engId=(S.engId==='${e.id}'?null:'${e.id}');remember();render()" title="לחץ לפתיחה / סגירה"><td>${S.engId === e.id ? '▾' : '▸'} <b>${esc(e.discipline)}</b></td><td>${esc(e.company)}</td><td class="small">${e.feeType === 'hourly' ? 'לפי שעות' : `${(e.milestones || []).length} אבני דרך`} · ${esc(termsText(e.terms))}</td>
-      <td class="n">${money(s2.fee)}</td><td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="bar ${s2.pct > 100.5 ? 'over' : ''}" style="width:80px"><i style="width:${Math.min(100, s2.pct)}%"></i></div><span class="small">${qty(s2.pct)}%</span></div></td>
-      <td class="n">${money(s2.billed)}</td><td class="n">${money(s2.paid)}</td><td class="n">${money(s2.remaining)}</td><td>${s2.open ? `${s2.open} פתוחים` : ''} ${na ? `<span class="badge">${na}</span>` : ''}</td></tr>`; }).join('');
-  const tot = es.map(engStats).reduce((a, x) => ({fee: a.fee + x.fee, billed: a.billed + x.billed, paid: a.paid + x.paid}), {fee: 0, billed: 0, paid: 0});
-  const e = engById(S.engId); const eHtml = e && e.projectId === p.id ? engDetailHtml(e) : '';
-  v.innerHTML = `<div class="card"><div class="row spread"><div><a href="#" onclick="S.projectId=null;S.engId=null;remember();render();return false">← כל הפרויקטים</a><h2 style="margin:6px 0 0">${esc(p.name)}</h2><div class="small muted">${esc(p.client || '')} ${p.notes ? '· ' + esc(p.notes) : ''}</div></div>
-      <div class="row"><button class="small" onclick="editProject('${p.id}')">ערוך פרויקט</button><button class="small" onclick="openReport({project:'${p.id}'})">${ico('report')} דוח</button><button onclick="importQuote('${p.id}')">ייבוא הצעת מחיר (PDF)</button><button class="primary" onclick="editEng(null,'${p.id}')">+ מתכנן</button></div></div></div>
-    ${fold('engs_' + p.id, 'מתכננים בפרויקט', `<div class="tableWrap"><table class="rtable"><thead><tr><th>דיסציפלינה</th><th>מתכנן / משרד</th><th>מבנה שכ״ט</th><th>שכ״ט (ללא מע״מ)</th><th>חויב</th><th>סה״כ חשבונות</th><th>שולם</th><th>יתרה</th><th>פתוח</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="9" class="empty">אין מתכננים בפרויקט. הוסף מתכנן או ייבא הצעת מחיר.</td></tr>`}
-      ${es.length ? `<tr class="total"><td colspan="3">סה״כ פרויקט</td><td class="n">${money(r2(tot.fee))}</td><td>${tot.fee ? qty(tot.billed / tot.fee * 100) : 0}%</td><td class="n">${money(r2(tot.billed))}</td><td class="n">${money(r2(tot.paid))}</td><td class="n">${money(r2(tot.fee - tot.billed))}</td><td></td></tr>` : ''}</tbody></table></div>`, {right: `${es.length} מתכננים · לחיצה על שורה פותחת / סוגרת את פרטי המתכנן`})}
-    ${eHtml}`;
+  const es = engsOf(p.id), pb = projBills(p.id), view = S.projView || 'open';
+  const e = engById(S.engId); const showE = e && e.projectId === p.id;
+  const head = `<div class="card"><div class="row spread"><div><a href="#" onclick="S.projectId=null;S.engId=null;remember();render();return false">← כל הפרויקטים</a><h2 style="margin:6px 0 0">${esc(p.name)}</h2><div class="small muted">${esc(p.client || '')}</div></div>
+      <div class="row"><button class="small" onclick="editProject('${p.id}')">ערוך פרויקט</button><button class="small" onclick="openReport({project:'${p.id}'})">${ico('report')} דוח</button><button class="small" onclick="importQuote('${p.id}')">ייבוא הצעת מחיר</button><button class="primary small" onclick="editEng(null,'${p.id}')">+ מתכנן</button></div></div>
+    <div class="seg3">${[['open', 'מה פתוח'], ['engs', `מתכננים (${es.length})`], ['bills', `כל החשבונות (${pb.length})`]].map(([k, t]) => `<button class="${view === k ? 'on' : ''}" onclick="S.projView='${k}';S.engId=null;remember();render()">${t}</button>`).join('')}</div></div>`;
+  if (view === 'open') { v.innerHTML = head + projOpenHtml(p, pb); return; }
+  if (view === 'bills') { v.innerHTML = head + projBillsHtml(pb); return; }
+  // מתכננים - בנייד: מתכנן שנבחר נפתח במסך נפרד; במחשב: מתחת לרשימה
+  if (showE && isMobile()) { v.innerHTML = head + `<div class="card"><a href="#" onclick="const id=S.engId;S.engId=null;remember();render();setTimeout(()=>document.getElementById('er_'+id)?.scrollIntoView({block:'center'}),30);return false">← חזרה לרשימת המתכננים</a></div>` + engDetailHtml(e); return; }
+  const f = S.engF || 'all', so = S.engSort || 'disc';
+  v.innerHTML = head + `<div class="card"><div class="row" style="gap:8px">
+      <input id="engQ" placeholder="🔍 חיפוש מתכנן / דיסציפלינה…" value="${esc(S.engQ || '')}" oninput="S.engQ=this.value;renderEngList()" style="flex:1;min-width:180px">
+      <select onchange="S.engSort=this.value;renderEngList()">${[['disc', 'מיון: דיסציפלינה'], ['name', 'מיון: שם מתכנן'], ['pct', 'מיון: % חיוב']].map(([k, t]) => `<option value="${k}" ${so === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="chips2">${[['all', 'הכל'], ['open', 'עם חוב פתוח'], ['late', 'באיחור']].map(([k, t]) => `<button class="${f === k ? 'on' : ''}" onclick="S.engF='${k}';document.querySelectorAll('.chips2 button').forEach(b=>b.classList.toggle('on',b===this));renderEngList()">${t}</button>`).join('')}</div>
+    <div id="engList"></div></div>${showE ? engDetailHtml(e) : ''}`;
+  renderEngList();
+}
+function projBills(pid) {
+  return S.db.bills.map(b => ({b, e: engById(b.engagementId)})).filter(x => x.e && x.e.projectId === pid)
+    .map(x => ({...x, ps: payState(x.b, x.e), st: billStatus(x.b), due: dueDate(x.b, x.e), g: billGross(x.b)}));
+}
+function projBillRow(x, right) {
+  return `<div class="obr" onclick="S.engId='${x.e.id}';editBill('${x.b.id}')"><div><b>${esc(x.e.discipline || '')}</b> · ${esc(x.e.company || '')} <span class="muted">· חשבון ${esc(x.b.seq)}</span><div class="small muted">${money(x.g)} כולל מע״מ${x.b.deal?.no ? ' · ח-ן עסקה ' + esc(x.b.deal.no) : ''}</div></div><div class="obrR">${right}</div></div>`;
+}
+function projOpenHtml(p, pb) {
+  const today = todayIso(), sum = l => money(r2(l.reduce((a, x) => a + x.g, 0)));
+  const late = pb.filter(x => x.ps === 'late').sort((a, b) => (a.due || '').localeCompare(b.due || ''));
+  const tr = pb.filter(x => x.st === 2 && x.ps !== 'late').sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
+  const wait = pb.filter(x => x.st === 1 && x.ps !== 'late');
+  return `<div class="otiles"><a class="ot late" href="#oLate"><span>⚠ באיחור תשלום</span><b>${sum(late)}</b><span>${late.length} חשבונות</span></a><a class="ot tr" href="#oTr"><span>הועבר, טרם שולם</span><b>${sum(tr)}</b><span>${tr.length} חשבונות</span></a></div>
+    <div class="card" id="oLate"><h3 style="margin:0 0 6px">⚠ באיחור (${late.length})</h3>${late.map(x => projBillRow(x, `<b class="red">${daysBetween(x.due, today)} ימים</b><div class="small muted">היה לתשלום ${dateHe(x.due)}</div>`)).join('') || '<div class="muted small">✓ אין חשבונות באיחור</div>'}</div>
+    <div class="card" id="oTr"><h3 style="margin:0 0 6px">הועבר לתשלום - ממתין (${tr.length})</h3>${tr.map(x => projBillRow(x, `<b class="blue">${x.due ? 'עד ' + dateHe(x.due) : '—'}</b><div class="small muted">הועבר ${dateHe(x.b.transfer?.date)}</div>`)).join('') || '<div class="muted small">אין חשבונות שממתינים לתשלום</div>'}</div>
+    ${wait.length ? `<div class="small muted" style="margin:0 4px 10px">עוד ${wait.length} חשבונות התקבלו וטרם הועברו לתשלום (${sum(wait)}) - בלשונית "כל החשבונות".</div>` : ''}
+    <div class="small muted" style="text-align:center">לחיצה על שורה פותחת את החשבון</div>`;
+}
+function projBillsHtml(pb) {
+  const l = pb.slice().sort((a, b) => (b.b.deal?.date || '').localeCompare(a.b.deal?.date || ''));
+  const st = x => x.ps === 'late' ? `<b class="red">באיחור ${daysBetween(x.due, todayIso())} ימים</b>` : x.ps === 'paid' ? `<b style="color:var(--good)">שולם ${dateHe(x.b.payment?.date)}</b>${x.st < 4 ? '<div class="small muted">חסרה חשבונית מס</div>' : ''}` : x.st === 2 ? `<b class="blue">הועבר · עד ${dateHe(x.due)}</b>` : `<span class="muted">${STAGE_NAMES[x.st]}</span>`;
+  return `<div class="card">${l.map(x => projBillRow(x, st(x))).join('') || '<div class="muted">אין חשבונות בפרויקט.</div>'}</div>`;
+}
+function renderEngList() {
+  const el = $('#engList'); if (!el) return; const p = projById(S.projectId); if (!p) return;
+  const q = (S.engQ || '').trim(), f = S.engF || 'all', so = S.engSort || 'disc', pb = projBills(p.id);
+  let es = engsOf(p.id).map(e => ({e, s: engStats(e), late: pb.some(x => x.e.id === e.id && x.ps === 'late'), open: pb.some(x => x.e.id === e.id && x.ps !== 'paid' && x.st >= 1), na: projAlerts().filter(a => a.engId === e.id && a.level !== 'info').length}));
+  if (q) es = es.filter(x => `${x.e.discipline || ''} ${x.e.company || ''} ${x.e.contact || ''}`.includes(q));
+  if (f === 'late') es = es.filter(x => x.late); else if (f === 'open') es = es.filter(x => x.open);
+  es.sort(so === 'name' ? (a, b) => (a.e.company || '').localeCompare(b.e.company || '', 'he') : so === 'pct' ? (a, b) => b.s.pct - a.s.pct : (a, b) => (a.e.discipline || '').localeCompare(b.e.discipline || '', 'he'));
+  const all = engsOf(p.id).map(engStats), tot = all.reduce((a, x) => ({fee: a.fee + x.fee, billed: a.billed + x.billed, paid: a.paid + x.paid}), {fee: 0, billed: 0, paid: 0});
+  el.innerHTML = (es.map(x => `<div class="erow ${S.engId === x.e.id ? 'sel' : ''}" id="er_${x.e.id}" onclick="S.engId=(S.engId==='${x.e.id}'&&!isMobile()?null:'${x.e.id}');remember();render();${isMobile() ? 'window.scrollTo(0,0)' : `setTimeout(()=>document.querySelector('.engDetail')?.scrollIntoView({behavior:'smooth'}),30)`}">
+      <div class="eL"><b>${esc(x.e.discipline || '—')}</b>${x.late ? ' <span class="red">⚠</span>' : ''}${x.na ? ` <span class="badge">${x.na}</span>` : ''}<div class="small muted">${esc(x.e.company || '')}</div></div>
+      <div class="eM small muted">${money(x.s.fee)}<div>שולם ${money(x.s.paid)}</div></div>
+      <div class="eR"><span class="small">${qty(x.s.pct)}%</span><div class="bar ${x.s.pct > 100.5 ? 'over' : ''}"><i style="width:${Math.min(100, x.s.pct)}%"></i></div></div></div>`).join('') || `<div class="muted small" style="padding:10px 0">${engsOf(p.id).length ? 'לא נמצאו מתכננים לפי החיפוש / הסינון.' : 'אין מתכננים בפרויקט. הוסף מתכנן או ייבא הצעת מחיר.'}</div>`)
+    + (all.length ? `<div class="etot small"><b>סה״כ פרויקט</b> · שכ״ט ${money(r2(tot.fee))} · חויב ${tot.fee ? qty(tot.billed / tot.fee * 100) : 0}% (${money(r2(tot.billed))}) · שולם ${money(r2(tot.paid))}</div>` : '');
 }
 function engDetailHtml(e) {
   const s2 = engStats(e), bs = billsOf(e.id), fee = Number(e.fee) || 0;
@@ -2262,7 +2344,7 @@ function engDetailHtml(e) {
     return `<tr class="clickable" onclick="editBill('${b.id}')"><td class="n"><b>${esc(b.seq)}</b></td><td class="small">${esc(billLinesText(b, e))}</td><td class="n">${money(billNet(b))}<div class="small muted">${money(billGross(b))} כולל מע״מ</div></td>
       ${stageCell(b, 'deal', 'חשבונית עסקה')}${stageCell(b, 'transfer', 'הועבר לתשלום')}<td class="stage ${PAY_CLS[ps]}">${ps === 'paid' ? '✓ שולם' : ps === 'late' ? `⚠ באיחור ${-daysBetween(todayIso(), due)} ימים` : ps === 'soon' ? '● לתשלום השבוע' : '○ לתשלום'}<div>${b.payment?.date ? dateHe(b.payment.date) : due ? 'עד ' + dateHe(due) : ''}</div></td>
       ${stageCell(b, 'tax', 'חשבונית מס')}</tr>`; }).join('');
-  return `<div class="card" style="margin-top:14px"><div class="row spread"><div><h2 style="margin:0">${esc(e.discipline)} · ${esc(e.company)} <button class="small ghost" title="סגור" onclick="S.engId=null;remember();render()">✕ סגור</button></h2>
+  return `<div class="card engDetail" style="margin-top:14px"><div class="row spread"><div><h2 style="margin:0">${esc(e.discipline)} · ${esc(e.company)} <button class="small ghost" title="סגור" onclick="S.engId=null;remember();render()">✕ סגור</button></h2>
       <div class="small muted">${e.quoteNo ? `הצעה ${esc(e.quoteNo)} · ` : ''}${e.quoteDate ? dateHe(e.quoteDate) + ' · ' : ''}${esc(termsText(e.terms))}${e.contact ? ' · ' + esc(e.contact) : ''}${e.phone ? ' · ' + esc(e.phone) : ''}${e.email ? ' · ' + esc(e.email) : ''}</div></div>
       <div class="row"><button class="small" onclick="editEng('${e.id}')">ערוך מתכנן / הצעה</button><button class="small" onclick="openReport({eng:'${e.id}'})">${ico('report')} דוח</button><button class="primary" onclick="editBill(null,'${e.id}')">+ חשבון חדש (התקבלה חשבונית עסקה)</button></div></div>
     <div class="stats"><div class="stat"><div class="label">שכר טרחה</div><div class="value">${money(s2.fee)}</div></div><div class="stat"><div class="label">חויב עד כה</div><div class="value">${money(s2.billed)}</div><div class="small muted">${qty(s2.pct)}%</div></div>
