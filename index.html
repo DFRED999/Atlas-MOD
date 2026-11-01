@@ -1089,11 +1089,26 @@ async function showMonths(rel) {
 
 const GENERATED = /^(חשבון_|חשבון_ודיווח|בדיקת_המרה)|מאוחד|לפני חתימה|^~\$/;
 const REPORT_NAME = /דיווח[\s_]*שעות|שעות[\s_]*עבודה/;
+// גיבוי לזיהוי לפי שם: קבצי Excel / PDF בתיקייה שהתוכן שלהם הוא טופס 23.031
+async function reportCandidatesByContent(dir, entries) {
+  const g = {};
+  for (const e of entries) {
+    if (e.kind !== 'file' || GENERATED.test(e.name)) continue;
+    const m = /^(.*)\.(pdf|xlsx|xls)$/i.exec(e.name); if (!m) continue; const ext = m[2].toLowerCase();
+    try {
+      const buf = await readFile(dir, e.name); let ok = false;
+      if (ext === 'pdf') ok = pdfKind((await pdfFirstPageText(buf)).text) === 'report';
+      else { const wb = readWb(buf); ok = wb.SheetNames.some(n => { const sh = new Sheet(wb.Sheets[n]); return !!sh.find('שם העובד המדווח') || !!sh.find('23.031'); }); }
+      if (ok) (g[m[1].trim()] = g[m[1].trim()] || {stem: m[1].trim()})[ext] = e.name;
+    } catch (x) {}
+  }
+  return Object.values(g);
+}
 function reportCandidates(entries) {
   const g = {};
   for (const e of entries) {
     if (e.kind !== 'file' || GENERATED.test(e.name)) continue;
-    const m = /^(.*)\.(pdf|xlsx|xls)$/i.exec(e.name); if (!m || !REPORT_NAME.test(e.name)) continue;
+    const m = /^(.*)\.(pdf|xlsx|xls)$/i.exec(e.name); if (!m || !REPORT_NAME.test(e.name.normalize('NFC'))) continue;
     (g[m[1].trim()] = g[m[1].trim()] || {stem: m[1].trim()})[m[2].toLowerCase()] = e.name;
   }
   return Object.values(g);
@@ -1129,10 +1144,13 @@ async function scanMonth(stem) {
     }
     out.monthOk = true;
     steps.push({ok: true, text: `תיקיית חודש נמצאה: ${mfName}`});
-    let c = reportCandidates(await listEntries(mf));
+    const ents = await listEntries(mf);
+    let c = reportCandidates(ents);
+    if (!c.length) { c = await reportCandidatesByContent(mf, ents); if (c.length) steps.push({ok: true, text: `דוח השעות זוהה לפי התוכן (טופס 23.031), למרות ששם הקובץ לא כולל "דיווח שעות": \u2066${c.map(x => x.stem).join(', ')}\u2069`}); }
     out.candidates = c;
     if (stem) c = c.filter(x => x.stem === stem);
-    if (!c.length) { steps.push({ok: false, text: 'לא נמצא דוח שעות מקור בתיקייה (קובץ ששמו כולל "דיווח שעות" או "שעות עבודה").'}); return out; }
+    if (!c.length) { const files = ents.filter(x => x.kind === 'file').map(x => x.name);
+      steps.push({ok: false, text: 'לא נמצא דוח שעות (טופס 23.031) בתיקייה - לא לפי השם ולא לפי התוכן.' + (files.length ? ` הקבצים בתיקייה: ${files.join(' · ')}` : ' התיקייה ריקה.')}); return out; }
     if (c.length > 1) { steps.push({ok: null, text: `נמצאו ${c.length} דוחות שעות אפשריים - יש לבחור אחד.`}); out.needChoice = true; return out; }
     const r = c[0]; out.report = r;
     steps.push({ok: true, text: `דוח שעות מקור נמצא: \u2066${r.stem}\u2069 (${['xlsx', 'pdf', 'xls'].filter(k => r[k]).map(k => k.toUpperCase()).join(' + ')})`});
