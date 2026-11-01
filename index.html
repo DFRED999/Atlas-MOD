@@ -797,6 +797,11 @@ async function pdfFirstPageText(buf) {
   const tc = await (await doc.getPage(1)).getTextContent();
   return {text: tc.items.map(i => i.str).join(' '), pages: doc.numPages};
 }
+// האם ה-PDF כבר מאוחד (אחרי עמוד החשבון יש עמוד של דוח שעות 23.031)
+async function pdfIsMerged(buf) {
+  try { const doc = await pdfjsLib.getDocument({data: new Uint8Array(buf.slice(0))}).promise; if (doc.numPages < 2) return false;
+    const tc = await (await doc.getPage(doc.numPages)).getTextContent(); return pdfKind(tc.items.map(i => i.str).join(' ')) === 'report'; } catch (e) { return false; }
+}
 function pdfKind(text) { const t = text.replace(/\s/g, ''); return /23\.030/.test(t) ? 'invoice' : /23\.031/.test(t) ? 'report' : 'unknown'; }
 const fmtAmount = v => Math.floor(Number(v) + 1e-9).toLocaleString('en-US');
 
@@ -1115,7 +1120,8 @@ function reportCandidates(entries) {
 }
 // שם קצר של העובד לשם הקובץ המאוחד (שדה "שם בקובץ החשבון" בכרטיס; ברירת מחדל - השם הפרטי)
 const fileNick = p => String(p?.fileNick || (p?.name || '').trim().split(/\s+/)[0] || 'עובד').replace(/[\\/:*?"<>|]/g, '').trim();
-function outputNames(month, n, p) { const f = folderName(month); return {xlsx: `חשבון_${f}_${n}.xlsx`, pdf: `חשבון_${f}_${n}.pdf`, merged: `חשבון ${fileNick(p || personById(S.personId))} ${f} לפני חתימה.pdf`}; }
+// כל קבצי החשבון בשם אחיד: "חשבון <עובד> <MM-YYYY> לפני חתימה" (ה-PDF מ-Excel מוחלף בקובץ המאוחד באותו שם)
+function outputNames(month, n, p) { const f = folderName(month), base = `חשבון ${fileNick(p || personById(S.personId))} ${f} לפני חתימה`; return {xlsx: `${base}.xlsx`, pdf: `${base}.pdf`, merged: `${base}.pdf`, oldXlsx: `חשבון_${f}_${n}.xlsx`}; }
 
 /* ===================================================================== actions */
 function compareEmployee(p, e) {
@@ -1200,7 +1206,7 @@ async function prepareInvoice(opts) {
       out.rejected = rejected;
       if (!found.length) { steps.push({ok: false, text: `לא נמצא חשבון מס׳ ${n - 1} של הזמנה ${o.number} בתיקייה ${folderName(pm)}.`}); out.allowPick = true; return out; }
       let f = found;
-      if (f.length > 1) { const std = outputNames(pm, n - 1).xlsx; const pr = f.filter(x => x.name === std); if (pr.length === 1) f = pr; }
+      if (f.length > 1) { const on = outputNames(pm, n - 1); const pr = f.filter(x => x.name === on.xlsx || x.name === on.oldXlsx); if (pr.length === 1) f = pr; }
       if (f.length > 1) { steps.push({ok: null, text: `נמצאו ${f.length} קבצים מתאימים - יש לבחור.`}); out.previousChoices = f.map(x => ({name: x.name, buf: x.buf})); return out; }
       src = f[0].buf; srcName = f[0].name; prev = f[0].inv;
       steps.push({ok: true, text: `חשבון קודם נמצא: \u2066${folderName(pm)}\\${srcName}\u2069`});
@@ -1213,7 +1219,9 @@ async function prepareInvoice(opts) {
   const plan = planNextInvoice(prev, p.name, o, S.month, n, repLinesOf(rep, o), opts.dealNo || rep.dealInvoiceNo, opts.invoiceType, isFirst);
   steps.push({ok: true, text: 'מצטברים חושבו'});
   const names = outputNames(S.month, n);
-  const exists = {xlsx: await fileExists(mf, names.xlsx), pdf: await fileExists(mf, names.pdf), merged: await fileExists(mf, names.merged)};
+  const exists = {xlsx: await fileExists(mf, names.xlsx), pdf: await fileExists(mf, names.pdf), merged: false};
+  if (exists.pdf) exists.merged = names.merged === names.pdf ? await pdfIsMerged(await readFile(mf, names.pdf)) : await fileExists(mf, names.merged);
+  else if (names.merged !== names.pdf) exists.merged = await fileExists(mf, names.merged);
   Object.assign(out, {ready: true, plan, src, srcName, prev, isFirst, names, exists, invoiceNo: n, reportPdf: rep.reportPdf, reportXlsx: rep.reportXlsx});
   return out;
 }
@@ -1997,7 +2005,8 @@ async function stepMerge(manualFile) {
     if (rk === 'invoice') throw new Error(`הקובץ ${repPdfName} מכיל חשבון ולא דוח שעות.`);
     checks.push(rk === 'report' ? {ok: true, text: `${repPdfName} הוא דוח שעות (טופס 23.031)`} : {ok: null, text: `לא זוהה "טופס 23.031" ב-${repPdfName} - בדוק שזה דוח השעות.`});
     const res = await mergeInvoiceAndReport(invBuf, repBuf);
-    if (await fileExists(mf, r.names.merged) && !confirm(`${r.names.merged} כבר קיים. להחליף אותו?`)) return;
+    // אם הקובץ הקיים הוא ה-PDF של החשבון עצמו (עמוד אחד, באותו שם) - מחליפים אותו בקובץ המאוחד בלי לשאול
+    if (r.names.merged !== invName && await fileExists(mf, r.names.merged) && !confirm(`${r.names.merged} כבר קיים. להחליף אותו?`)) return;
     await writeFile(mf, r.names.merged, res.bytes);
     Object.assign(rep, {status: 'הופק', invoiceNo: r.invoiceNo, reportPdf: repPdfName, producedAt: new Date().toISOString(), outputs: r.names}); upsert('reports', rep); await saveDb();
     r.exists.merged = r.exists.pdf = true; $('#prepOut').innerHTML = prepHtml(r);
